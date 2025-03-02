@@ -1,10 +1,3 @@
-{
-  `path`: `README.md`,
-  `repo`: `pneumatic-hopper-simulation`,
-  `owner`: `gabejohnsnn`,
-  `branch`: `main`,
-  `content`: `# Pneumatic Hopper Simulation
-
 A physics-based simulation of a self-leveling pneumatic hopper system constrained to vertical movement. This project demonstrates altitude control using various control methods, including delayed hysteresis control, PID control, and bang-bang control with Kalman filtering for state estimation.
 
 ## Overview
