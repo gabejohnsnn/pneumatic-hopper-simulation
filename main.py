@@ -4,7 +4,7 @@ Pneumatic Hopper Simulation - Main Module
 
 This program simulates a pneumatically actuated hopper constrained to vertical movement.
 It implements a physics model with pneumatic delay, Kalman filtering for state estimation,
-and a hysteresis controller for altitude control.
+and configurable control methods for altitude control.
 
 Run this script to start the simulation.
 """
@@ -12,15 +12,19 @@ Run this script to start the simulation.
 import time
 import numpy as np
 import pygame
+import pygame_gui
 import argparse
 import os
 
 from physics import PhysicsEngine
 from sensor import SensorSystem
 from kalman_filter import KalmanFilter
-from controller import HysteresisController
 from visualization import Visualizer
+from parameters import ParameterPanel
 from analysis import SimulationLogger, plot_simulation_results, plot_kalman_performance, plot_controller_performance
+
+# Import the controller factory function
+from controllers import create_controller
 
 
 def parse_arguments():
@@ -38,8 +42,9 @@ def parse_arguments():
     # Controller parameters
     parser.add_argument('--target', type=float, default=3.0,
                         help='Initial target height in meters (default: 3.0)')
-    parser.add_argument('--band', type=float, default=0.3,
-                        help='Hysteresis band width in meters (default: 0.3)')
+    parser.add_argument('--control', type=str, default='Hysteresis',
+                        choices=['Hysteresis', 'PID', 'Bang-Bang'],
+                        help='Control method (default: Hysteresis)')
     
     # Sensor parameters
     parser.add_argument('--lidar-noise', type=float, default=0.05,
@@ -52,6 +57,8 @@ def parse_arguments():
                         help='Simulation time step in seconds (default: 0.01)')
     parser.add_argument('--no-auto', action='store_true',
                         help='Disable automatic control (manual thrust only)')
+    parser.add_argument('--no-params', action='store_true',
+                        help='Hide parameter adjustment panel')
     
     # Logging parameters
     parser.add_argument('--log', action='store_true',
@@ -93,14 +100,21 @@ def main():
         measurement_noise_acceleration=args.mpu_noise
     )
     
-    controller = HysteresisController(
+    # Create initial controller using factory function
+    controller = create_controller(
+        method=args.control,
         target_height=args.target,
-        hysteresis_band=args.band,
-        response_delay=args.delay/2,  # Controller response is half the pneumatic delay
+        response_delay=args.delay/2,  # For hysteresis controller
         dt=args.dt
     )
     
+    # Set up visualization
     visualizer = Visualizer()
+    
+    # Set up parameter panel if enabled
+    param_panel = None
+    if not args.no_params:
+        param_panel = ParameterPanel(400, 600, physics, controller)
     
     # Initialize data logger if needed
     logger = None
@@ -114,9 +128,13 @@ def main():
     manual_mode = args.no_auto
     manual_thrust = False
     step_counter = 0
+    current_control_method = args.control
     
     # Main simulation loop
     while running:
+        # Get time delta for UI updates
+        time_delta = visualizer.clock.get_time() / 1000.0
+        
         # Step the physics simulation
         physics.step()
         
@@ -178,10 +196,47 @@ def main():
             (est_pos, est_vel, est_acc),
             {
                 'target_height': controller.get_target_height(),
-                'hysteresis_band': controller.hysteresis_band
+                'hysteresis_band': getattr(controller, 'hysteresis_band', 0.3)
             },
             (pos_reading, acc_reading, new_lidar, new_mpu)
         )
+        
+        # Handle parameter panel events
+        if param_panel:
+            param_panel.update(time_delta)
+            
+            # Process events through parameter panel
+            for event in events:
+                param_changes = param_panel.handle_event(event)
+                
+                # Check if controller method changed
+                if param_changes['control_method_changed']:
+                    controller_params = param_panel.get_controller_parameters()
+                    new_method = controller_params['method']
+                    
+                    if new_method != current_control_method:
+                        print(f"Switching control method from {current_control_method} to {new_method}")
+                        current_control_method = new_method
+                        
+                        # Create new controller with current target height
+                        current_target = controller.get_target_height()
+                        controller = create_controller(
+                            method=new_method,
+                            target_height=current_target,
+                            response_delay=physics.delay_time/2,
+                            dt=args.dt,
+                            **controller_params
+                        )
+                
+                # Reset parameters if requested
+                if param_changes['reset_params']:
+                    param_panel.reset_parameters()
+            
+            # Draw parameter panel
+            param_panel.draw(visualizer.screen)
+            
+            # Update display after drawing parameter panel
+            pygame.display.flip()
         
         # Handle user input
         actions = visualizer.handle_events(events)
