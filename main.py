@@ -13,12 +13,14 @@ import time
 import numpy as np
 import pygame
 import argparse
+import os
 
 from physics import PhysicsEngine
 from sensor import SensorSystem
 from kalman_filter import KalmanFilter
 from controller import HysteresisController
 from visualization import Visualizer
+from analysis import SimulationLogger, plot_simulation_results, plot_kalman_performance, plot_controller_performance
 
 
 def parse_arguments():
@@ -50,6 +52,16 @@ def parse_arguments():
                         help='Simulation time step in seconds (default: 0.01)')
     parser.add_argument('--no-auto', action='store_true',
                         help='Disable automatic control (manual thrust only)')
+    
+    # Logging parameters
+    parser.add_argument('--log', action='store_true',
+                        help='Enable data logging')
+    parser.add_argument('--log-freq', type=int, default=10,
+                        help='Logging frequency (1 = every step, 10 = every 10th step)')
+    parser.add_argument('--log-dir', type=str, default='logs',
+                        help='Directory to store log files')
+    parser.add_argument('--analyze', action='store_true',
+                        help='Analyze and plot results after simulation ends')
     
     return parser.parse_args()
 
@@ -90,10 +102,18 @@ def main():
     
     visualizer = Visualizer()
     
+    # Initialize data logger if needed
+    logger = None
+    if args.log:
+        if not os.path.exists(args.log_dir):
+            os.makedirs(args.log_dir)
+        logger = SimulationLogger(log_folder=args.log_dir)
+    
     # Initialize flags
     running = True
     manual_mode = args.no_auto
     manual_thrust = False
+    step_counter = 0
     
     # Main simulation loop
     while running:
@@ -120,6 +140,37 @@ def main():
         
         # Apply control to physics
         physics.apply_control(control_input)
+        
+        # Log data if enabled (with frequency control)
+        if logger and step_counter % args.log_freq == 0:
+            logger.log_physics(
+                physics.simulation_time,
+                physics.position,
+                physics.velocity,
+                physics.acceleration,
+                physics.thrust
+            )
+            
+            logger.log_kalman(
+                physics.simulation_time,
+                est_pos,
+                est_vel,
+                est_acc,
+                np.diag(kalman.P)
+            )
+            
+            logger.log_controller(
+                physics.simulation_time,
+                controller.get_target_height(),
+                controller.get_target_height() - est_pos,
+                control_input
+            )
+            
+            logger.log_sensors(
+                physics.simulation_time,
+                pos_reading,
+                acc_reading
+            )
         
         # Update visualization
         events = visualizer.update(
@@ -158,6 +209,21 @@ def main():
                 manual_mode = False
                 print("Switched to automatic control")
             controller.adjust_target_height(actions['adjust_target'])
+        
+        # Increment step counter
+        step_counter += 1
+    
+    # Save log data if enabled
+    log_file = None
+    if logger:
+        log_file = logger.save_data()
+        
+        # Analyze and plot results if requested
+        if args.analyze and log_file:
+            data = SimulationLogger.load_data(log_file)
+            plot_simulation_results(data)
+            plot_kalman_performance(data)
+            plot_controller_performance(data)
     
     # Clean up
     visualizer.close()
