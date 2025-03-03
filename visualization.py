@@ -71,6 +71,7 @@ class Visualizer:
             self.settings_icon_size
         )
         self.show_settings = False  # Flag to toggle settings panel
+        self.show_lidar_detail = True  # Enhanced LiDAR visualization
         
         # Load or create gear icon
         self.gear_icon = self._create_gear_icon(self.settings_icon_size, (80, 80, 80))
