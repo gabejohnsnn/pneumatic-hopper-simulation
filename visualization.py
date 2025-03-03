@@ -401,6 +401,12 @@ class Visualizer:
             display_fps
         )
         
+        # Draw settings button
+        self.draw_settings_button()  # Add this line
+        
+        # Update the display
+        pygame.display.flip()
+            
         # Update the display
         pygame.display.flip()
         
