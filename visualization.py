@@ -421,6 +421,12 @@ class Visualizer:
     def is_settings_visible(self):
         """Return whether the settings panel should be visible."""
         return self.show_settings
+
+    # In parameters.py
+    def set_visible(self, visible):
+        """Set whether the parameter panel is visible."""
+        print(f"Parameter panel visibility set to: {visible}")
+        self.is_visible = visible
     
     def handle_events(self, events):
         """
@@ -468,7 +474,10 @@ class Visualizer:
                     actions['toggle_lidar'] = True
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     if event.button == 1:  # Left mouse button
+                        # Print for debugging
+                        print(f"Mouse click at {event.pos}")
                         if self.settings_icon_rect.collidepoint(event.pos):
+                            print("Settings button clicked!")
                             self.show_settings = not self.show_settings
                             actions['toggle_settings'] = True
         
@@ -570,6 +579,15 @@ if __name__ == "__main__":
         if actions['adjust_target'] != 0.0:
             target_height += actions['adjust_target']
             target_height = max(0.5, target_height)  # Keep target above ground
+
+        # In main.py
+        # Handle settings button toggle
+        if actions['toggle_settings']:
+            print("Toggle settings action received!")
+            param_panel_visible = not param_panel_visible
+            if param_panel:
+                print(f"Setting panel visibility to: {param_panel_visible}")
+                param_panel.set_visible(param_panel_visible)
     
     # Clean up
     viz.close()
