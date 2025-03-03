@@ -312,10 +312,32 @@ class Visualizer:
         """
         # Draw LiDAR reading
         if lidar_reading is not None:
-            lidar_y = self.world_to_screen_y(lidar_reading)
+            lidar_y = self.world_to_screen_y(lidar_reading)  # Calculate lidar_y first
             lidar_color = (0, 200, 0) if new_lidar else (0, 100, 0)
             
-            # Draw LiDAR line
+            # Enhanced LiDAR visualization
+            if self.show_lidar_detail:
+                # Draw LiDAR device on left side
+                lidar_x = 30
+                lidar_device_y = 50
+                pygame.draw.rect(self.screen, self.lidar_color, (lidar_x-10, lidar_device_y-5, 20, 10))
+                
+                # Draw LiDAR beam from device to measurement point
+                beam_points = [
+                    (lidar_x, lidar_device_y),
+                    ((self.width - self.control_panel_width) // 2, lidar_y)  # Hopper center
+                ]
+                
+                # Create a semi-transparent beam
+                beam_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+                pygame.draw.line(beam_surface, self.lidar_beam_color, *beam_points, 3)
+                self.screen.blit(beam_surface, (0, 0))
+                
+                # Draw a dot at the measurement point
+                pygame.draw.circle(self.screen, lidar_color, 
+                                 ((self.width - self.control_panel_width) // 2, lidar_y), 5)
+            
+            # Standard line visualization
             pygame.draw.line(self.screen, lidar_color, 
                             (0, lidar_y), (50, lidar_y), 2)
             
@@ -328,28 +350,6 @@ class Visualizer:
             mpu_color = (200, 0, 200) if new_mpu else (100, 0, 100)
             mpu_text = self.font.render(f"MPU: {mpu_reading:.2f} m/s²", True, mpu_color)
             self.screen.blit(mpu_text, (10, 10))
-
-        # Enhanced LiDAR visualization
-        if self.show_lidar_detail:
-            # Draw LiDAR device on left side
-            lidar_x = 30
-            lidar_device_y = 50
-            pygame.draw.rect(self.screen, self.lidar_color, (lidar_x-10, lidar_device_y-5, 20, 10))
-            
-            # Draw LiDAR beam from device to measurement point
-            beam_points = [
-                (lidar_x, lidar_device_y),
-                ((self.width - self.control_panel_width) // 2, lidar_y)  # Hopper center
-            ]
-            
-            # Create a semi-transparent beam
-            beam_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-            pygame.draw.line(beam_surface, self.lidar_beam_color, *beam_points, 3)
-            self.screen.blit(beam_surface, (0, 0))
-            
-            # Draw a dot at the measurement point
-            pygame.draw.circle(self.screen, lidar_color, 
-                              ((self.width - self.control_panel_width) // 2, lidar_y), 5)
 
     def draw_settings_button(self):
         """Draw the settings (gear) button in the corner."""
