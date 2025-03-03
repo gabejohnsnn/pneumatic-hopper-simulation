@@ -72,6 +72,8 @@ class Visualizer:
         )
         self.show_settings = False  # Flag to toggle settings panel
         self.show_lidar_detail = True  # Enhanced LiDAR visualization
+        self.lidar_color = (0, 150, 0)  # Green for LiDAR visualization
+        self.lidar_beam_color = (100, 200, 100, 150)
         
         # Load or create gear icon
         self.gear_icon = self._create_gear_icon(self.settings_icon_size, (80, 80, 80))
