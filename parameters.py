@@ -400,13 +400,13 @@ class ParameterPanel:
             'method': self.current_control_method
         }
         
-        if self.current_control_method == \"Hysteresis\":
+        if self.current_control_method == "Hysteresis":
             params['band'] = self.band_slider.get_current_value()
-        elif self.current_control_method == \"PID\":
+        elif self.current_control_method == "PID":
             params['kp'] = self.kp_slider.get_current_value()
             params['ki'] = self.ki_slider.get_current_value()
             params['kd'] = self.kd_slider.get_current_value()
-        elif self.current_control_method == \"Bang-Bang\":
+        elif self.current_control_method == "Bang-Bang":
             params['threshold'] = self.threshold_slider.get_current_value()
         
         return params
