@@ -42,8 +42,9 @@ def parse_arguments():
     # Controller parameters
     parser.add_argument('--target', type=float, default=3.0,
                         help='Initial target height in meters (default: 3.0)')
+    # Fix: Changed 'Bang-Bang' to 'BangBang' to avoid hyphen issues in command-line arguments
     parser.add_argument('--control', type=str, default='Hysteresis',
-                        choices=['Hysteresis', 'PID', 'Bang-Bang'],
+                        choices=['Hysteresis', 'PID', 'BangBang'],
                         help='Control method (default: Hysteresis)')
     
     # Sensor parameters
@@ -100,9 +101,14 @@ def main():
         measurement_noise_acceleration=args.mpu_noise
     )
     
+    # Fix: Handle the case where 'BangBang' is provided in command line but needs to be 'Bang-Bang' for the factory
+    control_method = args.control
+    if control_method == 'BangBang':
+        control_method = 'Bang-Bang'
+    
     # Create initial controller using factory function
     controller = create_controller(
-        method=args.control,
+        method=control_method,
         target_height=args.target,
         response_delay=args.delay/2,  # For hysteresis controller
         dt=args.dt
@@ -113,8 +119,10 @@ def main():
     
     # Set up parameter panel if enabled
     param_panel = None
+    param_panel_visible = False
     if not args.no_params:
-        param_panel = ParameterPanel(400, 600, physics, controller)
+        param_panel = ParameterPanel(400, 600, physics, controller, lidar_detail_enabled=visualizer.show_lidar_detail)
+        param_panel.set_visible(param_panel_visible)
     
     # Initialize data logger if needed
     logger = None
@@ -128,7 +136,7 @@ def main():
     manual_mode = args.no_auto
     manual_thrust = False
     step_counter = 0
-    current_control_method = args.control
+    current_control_method = control_method  # Fix: Use the corrected method name
     
     # Main simulation loop
     while running:
@@ -201,43 +209,6 @@ def main():
             (pos_reading, acc_reading, new_lidar, new_mpu)
         )
         
-        # Handle parameter panel events
-        if param_panel:
-            param_panel.update(time_delta)
-            
-            # Process events through parameter panel
-            for event in events:
-                param_changes = param_panel.handle_event(event)
-                
-                # Check if controller method changed
-                if param_changes['control_method_changed']:
-                    controller_params = param_panel.get_controller_parameters()
-                    new_method = controller_params['method']
-                    
-                    if new_method != current_control_method:
-                        print(f"Switching control method from {current_control_method} to {new_method}")
-                        current_control_method = new_method
-                        
-                        # Create new controller with current target height
-                        current_target = controller.get_target_height()
-                        controller = create_controller(
-                            method=new_method,
-                            target_height=current_target,
-                            response_delay=physics.delay_time/2,
-                            dt=args.dt,
-                            **controller_params
-                        )
-                
-                # Reset parameters if requested
-                if param_changes['reset_params']:
-                    param_panel.reset_parameters()
-            
-            # Draw parameter panel
-            param_panel.draw(visualizer.screen)
-            
-            # Update display after drawing parameter panel
-            pygame.display.flip()
-        
         # Handle user input
         actions = visualizer.handle_events(events)
         
@@ -264,6 +235,69 @@ def main():
                 manual_mode = False
                 print("Switched to automatic control")
             controller.adjust_target_height(actions['adjust_target'])
+        
+        if actions['toggle_lidar']:
+            visualizer.show_lidar_detail = not visualizer.show_lidar_detail
+            if param_panel:
+                param_panel.lidar_detail_enabled = visualizer.show_lidar_detail
+                param_panel._update_checkbox_states()
+        
+        # Handle settings button toggle
+        if actions['toggle_settings']:
+            param_panel_visible = not param_panel_visible
+            if param_panel:
+                param_panel.set_visible(param_panel_visible)
+        
+        # Handle parameter panel events if visible
+        if param_panel and param_panel_visible:
+            param_panel.update(time_delta)
+            
+            # Process events through parameter panel
+            for event in events:
+                param_changes = param_panel.handle_event(event)
+                
+                # Check if controller method changed
+                if param_changes['control_method_changed']:
+                    controller_params = param_panel.get_controller_parameters()
+                    new_method = controller_params['method']
+                    
+                    if new_method != current_control_method:
+                        print(f"Switching control method from {current_control_method} to {new_method}")
+                        current_control_method = new_method
+                        
+                        # Create new controller with current target height
+                        current_target = controller.get_target_height()
+                        controller = create_controller(
+                            method=new_method,
+                            target_height=current_target,
+                            response_delay=physics.delay_time/2,
+                            dt=args.dt,
+                            **controller_params
+                        )
+                
+                # Apply changes if requested
+                if param_changes['apply_changes']:
+                    # Reset simulation state
+                    physics.reset()
+                    sensors.reset()
+                    kalman.reset(physics.position)
+                    controller.reset(controller.get_target_height())
+                    manual_thrust = False
+                    print("Applied parameter changes and reset simulation state.")
+                
+                # Update LiDAR visualization if changed
+                if param_changes['lidar_detail_changed']:
+                    visualizer.show_lidar_detail = param_panel.get_lidar_detail_enabled()
+                
+                # Reset parameters if requested
+                if param_changes['reset_params']:
+                    param_panel.reset_parameters()
+            
+            # Draw parameter panel
+            param_panel.draw(visualizer.screen)
+            
+            # Update display after drawing parameter panel
+            pygame.display.flip()
         
         # Increment step counter
         step_counter += 1
