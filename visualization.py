@@ -60,6 +60,20 @@ class Visualizer:
         # Visualization flags
         self.show_kalman = True
         self.show_hysteresis = True
+
+        # Settings button (gear icon)
+        self.settings_icon_size = 40
+        self.settings_icon_pos = (self.settings_icon_size//2 + 10, self.height - self.settings_icon_size//2 - 10)
+        self.settings_icon_rect = pygame.Rect(
+            self.settings_icon_pos[0] - self.settings_icon_size//2,
+            self.settings_icon_pos[1] - self.settings_icon_size//2,
+            self.settings_icon_size,
+            self.settings_icon_size
+        )
+        self.show_settings = False  # Flag to toggle settings panel
+        
+        # Load or create gear icon
+        self.gear_icon = self._create_gear_icon(self.settings_icon_size, (80, 80, 80))
         
         # Clock for limiting frame rate
         self.clock = pygame.time.Clock()
@@ -92,6 +106,27 @@ class Visualizer:
         track_x = (self.width - self.control_panel_width) // 2 - track_width // 2
         track_rect = pygame.Rect(track_x, 0, track_width, self.height - self.ground_height)
         pygame.draw.rect(self.screen, self.track_color, track_rect)
+
+    def _create_gear_icon(self, size, color):
+        """Create a simple gear icon surface."""
+        surface = pygame.Surface((size, size), pygame.SRCALPHA)
+        center = size // 2
+        outer_radius = size // 2 - 2
+        inner_radius = size // 3
+        teeth = 8
+        
+        # Draw outer circle with teeth
+        for i in range(0, 360, 360 // teeth // 2):
+            radius = outer_radius if i % (360 // teeth) == 0 else inner_radius + (outer_radius - inner_radius) // 2
+            angle = i * np.pi / 180
+            x = int(center + radius * np.cos(angle))
+            y = int(center + radius * np.sin(angle))
+            pygame.draw.line(surface, color, (center, center), (x, y), 3)
+            
+        # Draw inner circle
+        pygame.draw.circle(surface, color, (center, center), inner_radius, 3)
+        
+        return surface
     
     def draw_hopper(self, position, velocity, thrust_level):
         """
@@ -290,6 +325,37 @@ class Visualizer:
             mpu_color = (200, 0, 200) if new_mpu else (100, 0, 100)
             mpu_text = self.font.render(f"MPU: {mpu_reading:.2f} m/s²", True, mpu_color)
             self.screen.blit(mpu_text, (10, 10))
+
+        # Enhanced LiDAR visualization
+        if self.show_lidar_detail:
+            # Draw LiDAR device on left side
+            lidar_x = 30
+            lidar_device_y = 50
+            pygame.draw.rect(self.screen, self.lidar_color, (lidar_x-10, lidar_device_y-5, 20, 10))
+            
+            # Draw LiDAR beam from device to measurement point
+            beam_points = [
+                (lidar_x, lidar_device_y),
+                ((self.width - self.control_panel_width) // 2, lidar_y)  # Hopper center
+            ]
+            
+            # Create a semi-transparent beam
+            beam_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+            pygame.draw.line(beam_surface, self.lidar_beam_color, *beam_points, 3)
+            self.screen.blit(beam_surface, (0, 0))
+            
+            # Draw a dot at the measurement point
+            pygame.draw.circle(self.screen, lidar_color, 
+                              ((self.width - self.control_panel_width) // 2, lidar_y), 5)
+
+    def draw_settings_button(self):
+        """Draw the settings (gear) button in the corner."""
+        # Draw a circle behind the gear if settings are showing
+        if self.show_settings:
+            pygame.draw.circle(self.screen, (180, 180, 180), self.settings_icon_pos, self.settings_icon_size//2)
+        
+        # Draw the gear icon
+        self.screen.blit(self.gear_icon, self.settings_icon_rect)
     
     def update(self, physics_state, kalman_state, controller_data, sensor_data):
         """
@@ -342,6 +408,10 @@ class Visualizer:
         self.clock.tick(60)
         
         return events
+
+    def is_settings_visible(self):
+        """Return whether the settings panel should be visible."""
+        return self.show_settings
     
     def handle_events(self, events):
         """
@@ -359,7 +429,9 @@ class Visualizer:
             'toggle_thrust': False,
             'adjust_target': 0.0,
             'toggle_kalman': False,
-            'toggle_hysteresis': False
+            'toggle_hysteresis': False,
+            'toggle_lidar': False,
+            'toggle_settings': False,
         }
         
         for event in events:
@@ -382,6 +454,14 @@ class Visualizer:
                 elif event.key == pygame.K_h:
                     self.show_hysteresis = not self.show_hysteresis
                     actions['toggle_hysteresis'] = True
+                elif event.key == pygame.K_l:
+                    self.show_lidar_detail = not self.show_lidar_detail
+                    actions['toggle_lidar'] = True
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    if event.button == 1:  # Left mouse button
+                        if self.settings_icon_rect.collidepoint(event.pos):
+                            self.show_settings = not self.show_settings
+                            actions['toggle_settings'] = True
         
         return actions
     
