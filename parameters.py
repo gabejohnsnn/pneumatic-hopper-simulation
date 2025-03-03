@@ -3,21 +3,8 @@ import pygame_gui
 import numpy as np
 
 class ParameterPanel:
-    \"\"\"
-    GUI panel for adjusting simulation parameters in real-time.
-    \"\"\"
     
     def __init__(self, width, height, physics_engine, controller, lidar_detail_enabled=True):
-        \"\"\"
-        Initialize the parameter panel.
-        
-        Args:
-            width (int): Panel width in pixels
-            height (int): Panel height in pixels
-            physics_engine: Reference to the physics engine instance
-            controller: Reference to the controller instance
-            lidar_detail_enabled (bool): Whether detailed LiDAR visualization is enabled
-        \"\"\"
         self.width = width
         self.height = height
         self.physics = physics_engine
@@ -33,8 +20,8 @@ class ParameterPanel:
         }
         
         # Current control method
-        self.control_methods = [\"Hysteresis\", \"PID\", \"Bang-Bang\"]
-        self.current_control_method = \"Hysteresis\"
+        self.control_methods = ["Hysteresis", "PID", "Bang-Bang"]
+        self.current_control_method = "Hysteresis"
         
         # Initialize pygame_gui manager
         self.ui_manager = pygame_gui.UIManager((width, height))
@@ -53,7 +40,6 @@ class ParameterPanel:
         self.is_visible = False
     
     def create_ui_elements(self):
-        \"\"\"Create all UI elements for parameter adjustment.\"\"\"
         # Spacing and positioning parameters
         panel_padding = 20
         element_spacing = 35
@@ -66,7 +52,7 @@ class ParameterPanel:
         # Title
         self.title_label = pygame_gui.elements.UILabel(
             relative_rect=pygame.Rect((panel_padding, y_pos), (self.width - 2*panel_padding, 30)),
-            text=\"Parameter Adjustment Panel\",
+            text="Parameter Adjustment Panel",
             manager=self.ui_manager
         )
         y_pos += 40
@@ -74,7 +60,7 @@ class ParameterPanel:
         # Physics Parameters Section
         self.physics_label = pygame_gui.elements.UILabel(
             relative_rect=pygame.Rect((panel_padding, y_pos), (self.width - 2*panel_padding, 25)),
-            text=\"Physics Parameters\",
+            text="Physics Parameters",
             manager=self.ui_manager
         )
         y_pos += 30
@@ -82,7 +68,7 @@ class ParameterPanel:
         # Mass Slider
         self.mass_label = pygame_gui.elements.UILabel(
             relative_rect=pygame.Rect((panel_padding, y_pos), (label_width, 25)),
-            text=\"Mass (kg):\",
+            text="Mass (kg):",
             manager=self.ui_manager
         )
         self.mass_slider = pygame_gui.elements.UIHorizontalSlider(
@@ -96,7 +82,7 @@ class ParameterPanel:
         # Max Thrust Slider
         self.thrust_label = pygame_gui.elements.UILabel(
             relative_rect=pygame.Rect((panel_padding, y_pos), (label_width, 25)),
-            text=\"Max Thrust (N):\",
+            text="Max Thrust (N):",
             manager=self.ui_manager
         )
         self.thrust_slider = pygame_gui.elements.UIHorizontalSlider(
@@ -110,7 +96,7 @@ class ParameterPanel:
         # Pneumatic Delay Slider
         self.delay_label = pygame_gui.elements.UILabel(
             relative_rect=pygame.Rect((panel_padding, y_pos), (label_width, 25)),
-            text=\"Delay (s):\",
+            text="Delay (s):",
             manager=self.ui_manager
         )
         self.delay_slider = pygame_gui.elements.UIHorizontalSlider(
@@ -124,7 +110,7 @@ class ParameterPanel:
         # Air Resistance Slider
         self.air_res_label = pygame_gui.elements.UILabel(
             relative_rect=pygame.Rect((panel_padding, y_pos), (label_width, 25)),
-            text=\"Air Resistance:\",
+            text="Air Resistance:",
             manager=self.ui_manager
         )
         self.air_res_slider = pygame_gui.elements.UIHorizontalSlider(
@@ -138,7 +124,7 @@ class ParameterPanel:
         # Controller Parameters Section
         self.controller_label = pygame_gui.elements.UILabel(
             relative_rect=pygame.Rect((panel_padding, y_pos), (self.width - 2*panel_padding, 25)),
-            text=\"Controller Parameters\",
+            text="Controller Parameters",
             manager=self.ui_manager
         )
         y_pos += 30
@@ -146,7 +132,7 @@ class ParameterPanel:
         # Control Method Dropdown
         self.method_label = pygame_gui.elements.UILabel(
             relative_rect=pygame.Rect((panel_padding, y_pos), (label_width, 25)),
-            text=\"Control Method:\",
+            text="Control Method:",
             manager=self.ui_manager
         )
         self.method_dropdown = pygame_gui.elements.UIDropDownMenu(
@@ -161,7 +147,7 @@ class ParameterPanel:
         # Hysteresis Band Width Slider
         self.band_label = pygame_gui.elements.UILabel(
             relative_rect=pygame.Rect((panel_padding, y_pos), (label_width, 25)),
-            text=\"Hysteresis Band:\",
+            text="Hysteresis Band:",
             manager=self.ui_manager
         )
         self.band_slider = pygame_gui.elements.UIHorizontalSlider(
@@ -176,7 +162,7 @@ class ParameterPanel:
         # Proportional Gain Slider
         self.kp_label = pygame_gui.elements.UILabel(
             relative_rect=pygame.Rect((panel_padding, y_pos), (label_width, 25)),
-            text=\"P Gain:\",
+            text="P Gain:",
             manager=self.ui_manager
         )
         self.kp_slider = pygame_gui.elements.UIHorizontalSlider(
@@ -190,7 +176,7 @@ class ParameterPanel:
         # Integral Gain Slider
         self.ki_label = pygame_gui.elements.UILabel(
             relative_rect=pygame.Rect((panel_padding, y_pos), (label_width, 25)),
-            text=\"I Gain:\",
+            text="I Gain:",
             manager=self.ui_manager
         )
         self.ki_slider = pygame_gui.elements.UIHorizontalSlider(
@@ -204,7 +190,7 @@ class ParameterPanel:
         # Derivative Gain Slider
         self.kd_label = pygame_gui.elements.UILabel(
             relative_rect=pygame.Rect((panel_padding, y_pos), (label_width, 25)),
-            text=\"D Gain:\",
+            text="D Gain:",
             manager=self.ui_manager
         )
         self.kd_slider = pygame_gui.elements.UIHorizontalSlider(
@@ -219,7 +205,7 @@ class ParameterPanel:
         # Threshold Slider
         self.threshold_label = pygame_gui.elements.UILabel(
             relative_rect=pygame.Rect((panel_padding, y_pos), (label_width, 25)),
-            text=\"Threshold:\",
+            text="Threshold:",
             manager=self.ui_manager
         )
         self.threshold_slider = pygame_gui.elements.UIHorizontalSlider(
@@ -233,7 +219,7 @@ class ParameterPanel:
         # Visualization Parameters Section
         self.viz_label = pygame_gui.elements.UILabel(
             relative_rect=pygame.Rect((panel_padding, y_pos), (self.width - 2*panel_padding, 25)),
-            text=\"Visualization Options\",
+            text="Visualization Options",
             manager=self.ui_manager
         )
         y_pos += 30
@@ -241,13 +227,13 @@ class ParameterPanel:
         # LiDAR Visualization Checkbox
         self.lidar_checkbox = pygame_gui.elements.UIButton(
             relative_rect=pygame.Rect((panel_padding, y_pos), (25, 25)),
-            text=\"\",
+            text="",
             manager=self.ui_manager,
-            tool_tip_text=\"Toggle LiDAR Visualization\"
+            tool_tip_text="Toggle LiDAR Visualization"
         )
         self.lidar_label = pygame_gui.elements.UILabel(
             relative_rect=pygame.Rect((panel_padding + 30, y_pos), (self.width - panel_padding - 30, 25)),
-            text=\"Enhanced LiDAR Visualization\",
+            text="Enhanced LiDAR Visualization",
             manager=self.ui_manager
         )
         y_pos += element_spacing + 20
@@ -310,7 +296,6 @@ class ParameterPanel:
         self._update_checkbox_states()
     
     def update_controller_ui_visibility(self):
-        \"\"\"Update the visibility of controller-specific UI elements.\"\"\"
         # Hide all controller-specific parameters first
         self.band_label.hide()
         self.band_slider.hide()
@@ -324,30 +309,21 @@ class ParameterPanel:
         self.threshold_slider.hide()
         
         # Show parameters specific to the current control method
-        if self.current_control_method == \"Hysteresis\":
+        if self.current_control_method == "Hysteresis":
             self.band_label.show()
             self.band_slider.show()
-        elif self.current_control_method == \"PID\":
+        elif self.current_control_method == "PID":
             self.kp_label.show()
             self.kp_slider.show()
             self.ki_label.show()
             self.ki_slider.show()
             self.kd_label.show()
             self.kd_slider.show()
-        elif self.current_control_method == \"Bang-Bang\":
+        elif self.current_control_method == "Bang-Bang":
             self.threshold_label.show()
             self.threshold_slider.show()
     
     def handle_event(self, event):
-        \"\"\"
-        Handle pygame and UI events.
-        
-        Args:
-            event: Pygame event object
-            
-        Returns:
-            dict: Dictionary containing parameter changes
-        \"\"\"
         changes = {
             'physics_changed': False,
             'controller_changed': False,
@@ -389,7 +365,6 @@ class ParameterPanel:
         return changes
     
     def apply_parameter_changes(self):
-        \"\"\"Apply the current parameter settings to the simulation.\"\"\"
         # Apply physics parameters
         self.physics.mass = self.mass_slider.get_current_value()
         self.physics.max_thrust = self.thrust_slider.get_current_value()
@@ -408,22 +383,6 @@ class ParameterPanel:
         self.apply_changes = True
     
     def update(self, time_delta):
-        \"\"\"
-        Update the UI manager and any dynamic elements.
-        
-        Args:
-            time_delta (float): Time passed since last update
-        \"\"\"
-        if self.is_visible:
-            self.ui_manager.update(time_delta)
-    
-    def draw(self, surface):
-        \"\"\"
-        Draw the parameter panel to the given surface.
-        
-        Args:
-            surface: Pygame surface to draw on
-        \"\"\"
         if self.is_visible:
             # Draw a semi-transparent dark overlay behind the panel
             overlay = pygame.Surface((surface.get_width(), surface.get_height()), pygame.SRCALPHA)
@@ -453,7 +412,6 @@ class ParameterPanel:
         return params
     
     def reset_parameters(self):
-        \"\"\"Reset all parameters to default values.\"\"\"
         # Reset physics parameters
         self.physics.mass = self.initial_physics_values['mass']
         self.physics.max_thrust = self.initial_physics_values['max_thrust']
@@ -478,9 +436,7 @@ class ParameterPanel:
         self.update_ui_from_parameters()
     
     def set_visible(self, visible):
-        \"\"\"Set whether the parameter panel is visible.\"\"\"
         self.is_visible = visible
     
     def get_lidar_detail_enabled(self):
-        \"\"\"Get whether enhanced LiDAR visualization is enabled.\"\"\"
         return self.lidar_detail_enabled
