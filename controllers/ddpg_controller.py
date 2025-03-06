@@ -283,6 +283,24 @@ class DDPGController:
         for _ in range(100):
             if len(self.memory) > self.batch_size:
                 self._learn()
+
+        # Add more examples of perfect hovering
+        for _ in range(500):
+            # Generate states very close to target
+            pos_error = np.random.uniform(-0.1, 0.1, size=(1, 1))
+            velocity = np.random.uniform(-0.1, 0.1, size=(1, 1))
+            acceleration = np.random.uniform(-10.0, -9.7, size=(1, 1))
+            
+            state = np.hstack([pos_error, velocity, acceleration])
+            
+            # Ideal hover thrust (balancing gravity)
+            action = np.array([[0.45]])  # This depends on your specific physics parameters
+            
+            # High reward for perfect hovering
+            reward = -abs(pos_error) - 0.05 * abs(velocity)
+            
+            # Add to memory
+            self.memory.add(state, action, reward, state, False)
         
         print("Pretraining complete.")
     
@@ -350,6 +368,13 @@ class DDPGController:
         self.error_history.append(self.target_height - current_height)
         self.target_history.append(self.target_height)
         self.time_history.append(self.simulation_time)
+
+        position_error = self.target_height - current_height
+        if abs(position_error) > 2.0:  # If more than 2m from target
+            if position_error < 0:  # If above target
+                self.current_output = min(self.current_output, 0.2)  # Limit thrust
+            else:  # If below target
+                self.current_output = max(self.current_output, 0.6)  # Ensure minimum thrust
         
         return self.current_output
     
@@ -370,7 +395,11 @@ class DDPGController:
         
         # Calculate reward (negative cost)
         # Penalize position error and high velocities
-        reward = -(position_error**2 + 0.1 * estimated_velocity**2)
+        reward = -5.0 * position_error**2 - 0.2 * estimated_velocity**2
+
+        # Additional penalty for thrust usage to encourage efficiency
+        if hasattr(self, 'last_action') and self.last_action is not None:
+            reward -= 0.1 * float(self.last_action[0, 0])**2
         
         # Additional penalty for being close to the ground (safety margin)
         if current_height < 0.5:
