@@ -176,7 +176,7 @@ def main():
     report_interval = 10000
     
     # Main simulation loop
-    while running and (not args.headless or step_counter < max_steps)::
+    while running and (not args.headless or step_counter < max_steps):
         # Get time delta for UI updates
         time_delta = visualizer.clock.get_time() / 1000.0
         
