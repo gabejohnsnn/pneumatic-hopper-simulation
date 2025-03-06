@@ -20,8 +20,19 @@ class ParameterPanel:
         }
         
         # Current control method
-        self.control_methods = ["Hysteresis", "PID", "Bang-Bang"]
-        self.current_control_method = "Hysteresis"
+        self.control_methods = ["Hysteresis", "PID", "Bang-Bang", "DDPG"]
+        
+        # Determine current control method from controller instance
+        if hasattr(self.controller, 'hysteresis_band'):
+            self.current_control_method = "Hysteresis"
+        elif hasattr(self.controller, 'kp'):
+            self.current_control_method = "PID"
+        elif hasattr(self.controller, 'threshold'):
+            self.current_control_method = "Bang-Bang"
+        elif hasattr(self.controller, 'actor'):
+            self.current_control_method = "DDPG"
+        else:
+            self.current_control_method = "Hysteresis"  # Default
         
         # Initialize pygame_gui manager
         self.ui_manager = pygame_gui.UIManager((width, height))
@@ -214,6 +225,56 @@ class ParameterPanel:
             value_range=(0.01, 0.5),
             manager=self.ui_manager
         )
+        y_pos += element_spacing
+        
+        # --- DDPG Parameters ---
+        # Learning Rate Slider
+        self.lr_label = pygame_gui.elements.UILabel(
+            relative_rect=pygame.Rect((panel_padding, y_pos), (label_width, 25)),
+            text="Learning Rate:",
+            manager=self.ui_manager
+        )
+        
+        # Get default actor_lr or use a default value if not available
+        default_lr = 1e-4
+        if hasattr(self.controller, 'actor_optimizer') and hasattr(self.controller.actor_optimizer, 'param_groups'):
+            if len(self.controller.actor_optimizer.param_groups) > 0:
+                default_lr = self.controller.actor_optimizer.param_groups[0]['lr']
+        
+        self.lr_slider = pygame_gui.elements.UIHorizontalSlider(
+            relative_rect=pygame.Rect((panel_padding + label_width, y_pos), (slider_width, 25)),
+            start_value=default_lr * 10000,  # Scale up for slider (1e-4 -> 1.0)
+            value_range=(0.01, 10.0),  # 1e-6 to 1e-3
+            manager=self.ui_manager
+        )
+        y_pos += element_spacing
+        
+        # Noise Scale Slider
+        self.noise_label = pygame_gui.elements.UILabel(
+            relative_rect=pygame.Rect((panel_padding, y_pos), (label_width, 25)),
+            text="Exploration Noise:",
+            manager=self.ui_manager
+        )
+        self.noise_slider = pygame_gui.elements.UIHorizontalSlider(
+            relative_rect=pygame.Rect((panel_padding + label_width, y_pos), (slider_width, 25)),
+            start_value=getattr(self.controller, 'noise_scale', 0.2),
+            value_range=(0.0, 1.0),
+            manager=self.ui_manager
+        )
+        y_pos += element_spacing
+        
+        # DDPG Training Mode Checkbox
+        self.training_checkbox = pygame_gui.elements.UIButton(
+            relative_rect=pygame.Rect((panel_padding, y_pos), (25, 25)),
+            text="",
+            manager=self.ui_manager,
+            tool_tip_text="Toggle DDPG Training Mode"
+        )
+        self.training_label = pygame_gui.elements.UILabel(
+            relative_rect=pygame.Rect((panel_padding + 30, y_pos), (self.width - panel_padding - 30, 25)),
+            text="DDPG Training Mode",
+            manager=self.ui_manager
+        )
         y_pos += element_spacing + 10
         
         # Visualization Parameters Section
@@ -269,6 +330,13 @@ class ParameterPanel:
                 self.lidar_checkbox.set_text("✓")
             else:
                 self.lidar_checkbox.set_text("")
+        
+        # Update DDPG training mode checkbox
+        if self.training_checkbox is not None:
+            if hasattr(self.controller, 'training_mode') and self.controller.training_mode:
+                self.training_checkbox.set_text("✓")
+            else:
+                self.training_checkbox.set_text("")
     
     def update_ui_from_parameters(self):
         # Physics parameters
@@ -289,6 +357,14 @@ class ParameterPanel:
         if hasattr(self.controller, 'threshold'):
             self.threshold_slider.set_current_value(self.controller.threshold)
         
+        # DDPG parameters
+        if hasattr(self.controller, 'actor_optimizer') and hasattr(self.controller.actor_optimizer, 'param_groups'):
+            if len(self.controller.actor_optimizer.param_groups) > 0:
+                self.lr_slider.set_current_value(self.controller.actor_optimizer.param_groups[0]['lr'] * 10000)
+        
+        if hasattr(self.controller, 'noise_scale'):
+            self.noise_slider.set_current_value(self.controller.noise_scale)
+        
         # Set visibility of controller-specific parameters based on current control method
         self.update_controller_ui_visibility()
         
@@ -307,6 +383,12 @@ class ParameterPanel:
         self.kd_slider.hide()
         self.threshold_label.hide()
         self.threshold_slider.hide()
+        self.lr_label.hide()
+        self.lr_slider.hide()
+        self.noise_label.hide()
+        self.noise_slider.hide()
+        self.training_checkbox.hide()
+        self.training_label.hide()
         
         # Show parameters specific to the current control method
         if self.current_control_method == "Hysteresis":
@@ -322,6 +404,13 @@ class ParameterPanel:
         elif self.current_control_method == "Bang-Bang":
             self.threshold_label.show()
             self.threshold_slider.show()
+        elif self.current_control_method == "DDPG":
+            self.lr_label.show()
+            self.lr_slider.show()
+            self.noise_label.show()
+            self.noise_slider.show()
+            self.training_checkbox.show()
+            self.training_label.show()
     
     def handle_event(self, event):
         changes = {
@@ -348,6 +437,7 @@ class ParameterPanel:
         elif event.type == pygame_gui.UI_DROP_DOWN_MENU_CHANGED:
             if event.ui_element == self.method_dropdown:
                 self.current_control_method = event.text
+                changes['control_method_changed'] = True
                 self.update_controller_ui_visibility()
         
         elif event.type == pygame_gui.UI_BUTTON_PRESSED:
@@ -361,6 +451,12 @@ class ParameterPanel:
                 self.lidar_detail_enabled = not self.lidar_detail_enabled
                 changes['lidar_detail_changed'] = True
                 self._update_checkbox_states()
+            elif event.ui_element == self.training_checkbox and self.current_control_method == "DDPG":
+                if hasattr(self.controller, 'set_training_mode'):
+                    new_training_mode = not getattr(self.controller, 'training_mode', True)
+                    self.controller.set_training_mode(new_training_mode)
+                    self._update_checkbox_states()
+                    print(f"DDPG training mode set to: {new_training_mode}")
         
         return changes
     
@@ -377,20 +473,48 @@ class ParameterPanel:
         
         self.physics.air_resistance = self.air_res_slider.get_current_value()
         
-        # Controller parameters are set during method changes
+        # Apply controller parameters based on type
+        if self.current_control_method == "Hysteresis" and hasattr(self.controller, 'hysteresis_band'):
+            self.controller.hysteresis_band = self.band_slider.get_current_value()
+        
+        elif self.current_control_method == "PID" and hasattr(self.controller, 'kp'):
+            self.controller.kp = self.kp_slider.get_current_value()
+            self.controller.ki = self.ki_slider.get_current_value()
+            self.controller.kd = self.kd_slider.get_current_value()
+        
+        elif self.current_control_method == "Bang-Bang" and hasattr(self.controller, 'threshold'):
+            self.controller.threshold = self.threshold_slider.get_current_value()
+        
+        elif self.current_control_method == "DDPG":
+            # Update learning rate
+            if hasattr(self.controller, 'actor_optimizer') and hasattr(self.controller.actor_optimizer, 'param_groups'):
+                new_lr = self.lr_slider.get_current_value() / 10000.0  # Scale down from slider (1.0 -> 1e-4)
+                for param_group in self.controller.actor_optimizer.param_groups:
+                    param_group['lr'] = new_lr
+                
+                # Also update critic learning rate (typically 10x actor)
+                if hasattr(self.controller, 'critic_optimizer'):
+                    for param_group in self.controller.critic_optimizer.param_groups:
+                        param_group['lr'] = new_lr * 10
+                
+                print(f"Updated DDPG learning rates: Actor={new_lr}, Critic={new_lr*10}")
+            
+            # Update exploration noise
+            if hasattr(self.controller, 'noise_scale'):
+                self.controller.noise_scale = self.noise_slider.get_current_value()
+                print(f"Updated DDPG exploration noise scale: {self.controller.noise_scale}")
         
         # Set flag to indicate changes have been applied
         self.apply_changes = True
     
     def update(self, time_delta):
+        self.ui_manager.update(time_delta)
+    
+    def draw(self, surface):
         if self.is_visible:
-            # Draw a semi-transparent dark overlay behind the panel
-            overlay = pygame.Surface((surface.get_width(), surface.get_height()), pygame.SRCALPHA)
-            overlay.fill((0, 0, 0, 128))  # RGBA, last value is alpha (transparency)
-            surface.blit(overlay, (0, 0))
-            
             # Draw panel background
             pygame.draw.rect(surface, (240, 240, 240), self.panel_rect)
+            pygame.draw.rect(surface, (180, 180, 180), self.panel_rect, 2)  # Border
             
             # Draw UI elements
             self.ui_manager.draw_ui(surface)
@@ -408,6 +532,13 @@ class ParameterPanel:
             params['kd'] = self.kd_slider.get_current_value()
         elif self.current_control_method == "Bang-Bang":
             params['threshold'] = self.threshold_slider.get_current_value()
+        elif self.current_control_method == "DDPG":
+            params['learning_rate'] = self.lr_slider.get_current_value() / 10000.0
+            params['noise_sigma'] = self.noise_slider.get_current_value()
+            # Get training mode state
+            params['train'] = True
+            if hasattr(self.controller, 'training_mode'):
+                params['train'] = self.controller.training_mode
         
         return params
     
@@ -432,10 +563,25 @@ class ParameterPanel:
         if hasattr(self.controller, 'threshold'):
             self.controller.threshold = 0.1
         
+        if self.current_control_method == "DDPG":
+            # Reset DDPG specific parameters
+            if hasattr(self.controller, 'noise'):
+                self.controller.noise.reset()
+                self.controller.noise_scale = 0.2
+            
+            if hasattr(self.controller, 'actor_optimizer') and hasattr(self.controller.actor_optimizer, 'param_groups'):
+                for param_group in self.controller.actor_optimizer.param_groups:
+                    param_group['lr'] = 1e-4
+                
+                if hasattr(self.controller, 'critic_optimizer'):
+                    for param_group in self.controller.critic_optimizer.param_groups:
+                        param_group['lr'] = 1e-3
+        
         # Reset UI elements
         self.update_ui_from_parameters()
     
     def set_visible(self, visible):
+        """Set whether the parameter panel is visible."""
         self.is_visible = visible
     
     def get_lidar_detail_enabled(self):
