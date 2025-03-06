@@ -146,24 +146,24 @@ def main():
         controller.set_training_mode(False)
         print("DDPG controller is in evaluation mode (no training)")
     
-    # Set up visualization
-    visualizer = None
-    if not args.headless:
-        visualizer = Visualizer()
-    
-    # Set up parameter panel if enabled
-    param_panel = None
-    param_panel_visible = False
-    if not args.no_params:
-        param_panel = ParameterPanel(400, 600, physics, controller, lidar_detail_enabled=visualizer.show_lidar_detail)
-        param_panel.set_visible(param_panel_visible)
-    
-    # Initialize data logger if needed
-    logger = None
-    if args.log:
-        if not os.path.exists(args.log_dir):
-            os.makedirs(args.log_dir)
-        logger = SimulationLogger(log_folder=args.log_dir)
+        # Set up visualization
+        visualizer = None
+        if not args.headless:
+            visualizer = Visualizer()
+        
+        # Set up parameter panel if enabled
+        param_panel = None
+        param_panel_visible = False
+        if not args.no_params:
+            param_panel = ParameterPanel(400, 600, physics, controller, lidar_detail_enabled=visualizer.show_lidar_detail)
+            param_panel.set_visible(param_panel_visible)
+        
+        # Initialize data logger if needed
+        logger = None
+        if args.log:
+            if not os.path.exists(args.log_dir):
+                os.makedirs(args.log_dir)
+            logger = SimulationLogger(log_folder=args.log_dir)
     
     # Initialize flags
     running = True
