@@ -79,6 +79,14 @@ def parse_arguments():
                         help='Save trained DDPG model to file when simulation ends')
     parser.add_argument('--ddpg-no-train', action='store_true',
                         help='Disable DDPG training (evaluation mode only)')
+
+    # DDPG Training
+    parser.add_argument('--headless', action='store_true',
+                    help='Run in headless mode (no visualization) for faster training')
+    parser.add_argument('--training-steps', type=int, default=1000000,
+                    help='Number of simulation steps to run in headless mode')
+    parser.add_argument('--save-interval', type=int, default=50000,
+                    help='Save checkpoints every N steps in headless mode')
     
     return parser.parse_args()
 
@@ -122,6 +130,8 @@ def main():
         response_delay=args.delay/2,  # For hysteresis controller
         dt=args.dt
     )
+
+
     
     # Load pre-trained DDPG model if specified and applicable
     if control_method == 'DDPG' and args.ddpg_load:
@@ -137,7 +147,9 @@ def main():
         print("DDPG controller is in evaluation mode (no training)")
     
     # Set up visualization
-    visualizer = Visualizer()
+    visualizer = None
+    if not args.headless:
+        visualizer = Visualizer()
     
     # Set up parameter panel if enabled
     param_panel = None
@@ -158,10 +170,13 @@ def main():
     manual_mode = args.no_auto
     manual_thrust = False
     step_counter = 0
+    max_steps = 1000000
     current_control_method = control_method  # Fix: Use the corrected method name
+
+    report_interval = 10000
     
     # Main simulation loop
-    while running:
+    while running and (not args.headless or step_counter < max_steps)::
         # Get time delta for UI updates
         time_delta = visualizer.clock.get_time() / 1000.0
         
@@ -236,124 +251,130 @@ def main():
                 )
         
         # Update visualization
-        events = visualizer.update(
-            (physics.position, physics.velocity, physics.acceleration, physics.thrust / physics.max_thrust),
-            (est_pos, est_vel, est_acc),
-            {
-                'target_height': controller.get_target_height(),
-                'hysteresis_band': getattr(controller, 'hysteresis_band', 0.3)
-            },
-            (pos_reading, acc_reading, new_lidar, new_mpu)
-        )
+        if not args.headless:
+            events = visualizer.update(
+                (physics.position, physics.velocity, physics.acceleration, physics.thrust / physics.max_thrust),
+                (est_pos, est_vel, est_acc),
+                {
+                    'target_height': controller.get_target_height(),
+                    'hysteresis_band': getattr(controller, 'hysteresis_band', 0.3)
+                },
+                (pos_reading, acc_reading, new_lidar, new_mpu)
+            )
         
-        # Handle user input
-        actions = visualizer.handle_events(events)
+            # Handle user input
+            actions = visualizer.handle_events(events)
         
-        if actions['quit']:
-            running = False
-        
-        if actions['reset']:
-            physics.reset()
-            sensors.reset()
-            kalman.reset(physics.position)
-            controller.reset()
-            manual_thrust = False
-        
-        if actions['toggle_thrust']:
-            if manual_mode:
-                manual_thrust = not manual_thrust
-            else:
-                manual_mode = True
-                manual_thrust = True
-                print("Switched to manual control")
-        
-        if actions['adjust_target'] != 0.0:
-            if manual_mode:
-                manual_mode = False
-                print("Switched to automatic control")
-            controller.adjust_target_height(actions['adjust_target'])
-        
-        if actions['toggle_lidar']:
-            visualizer.show_lidar_detail = not visualizer.show_lidar_detail
-            if param_panel:
-                param_panel.lidar_detail_enabled = visualizer.show_lidar_detail
-                param_panel._update_checkbox_states()
-        
-        # Handle settings button toggle
-        if actions['toggle_settings']:
-            param_panel_visible = not param_panel_visible
-            if param_panel:
-                param_panel.set_visible(param_panel_visible)
-        
-        # Handle parameter panel events if visible
-        if param_panel and param_panel_visible:
-            param_panel.update(time_delta)
+            if actions['quit']:
+                running = False
             
-            # Process events through parameter panel
-            for event in events:
-                param_changes = param_panel.handle_event(event)
+            if actions['reset']:
+                physics.reset()
+                sensors.reset()
+                kalman.reset(physics.position)
+                controller.reset()
+                manual_thrust = False
+            
+            if actions['toggle_thrust']:
+                if manual_mode:
+                    manual_thrust = not manual_thrust
+                else:
+                    manual_mode = True
+                    manual_thrust = True
+                    print("Switched to manual control")
+            
+            if actions['adjust_target'] != 0.0:
+                if manual_mode:
+                    manual_mode = False
+                    print("Switched to automatic control")
+                controller.adjust_target_height(actions['adjust_target'])
+            
+            if actions['toggle_lidar']:
+                visualizer.show_lidar_detail = not visualizer.show_lidar_detail
+                if param_panel:
+                    param_panel.lidar_detail_enabled = visualizer.show_lidar_detail
+                    param_panel._update_checkbox_states()
+            
+            # Handle settings button toggle
+            if actions['toggle_settings']:
+                param_panel_visible = not param_panel_visible
+                if param_panel:
+                    param_panel.set_visible(param_panel_visible)
+        
+            # Handle parameter panel events if visible
+            if param_panel and param_panel_visible:
+                param_panel.update(time_delta)
                 
-                # Check if controller method changed
-                if param_changes['control_method_changed']:
-                    controller_params = param_panel.get_controller_parameters()
-                    new_method = controller_params['method']
+                # Process events through parameter panel
+                for event in events:
+                    param_changes = param_panel.handle_event(event)
                     
-                    if new_method != current_control_method:
-                        print(f"Switching control method from {current_control_method} to {new_method}")
+                    # Check if controller method changed
+                    if param_changes['control_method_changed']:
+                        controller_params = param_panel.get_controller_parameters()
+                        new_method = controller_params['method']
                         
-                        # Save DDPG model if switching away from it and save path specified
-                        if current_control_method == 'DDPG' and args.ddpg_save and isinstance(controller, DDPGController):
-                            ddpg_save_path = args.ddpg_save
-                            controller.save_networks(ddpg_save_path)
-                            print(f"Saved DDPG model to {ddpg_save_path}")
-                        
-                        current_control_method = new_method
-                        
-                        # Create new controller with current target height
-                        current_target = controller.get_target_height()
-                        controller = create_controller(
-                            method=new_method,
-                            target_height=current_target,
-                            response_delay=physics.delay_time/2,
-                            dt=args.dt,
-                            **controller_params
-                        )
-                        
-                        # Load DDPG model if switching to it and load path specified
-                        if new_method == 'DDPG' and args.ddpg_load and isinstance(controller, DDPGController):
-                            if os.path.exists(args.ddpg_load):
-                                controller.load_networks(args.ddpg_load)
-                                print(f"Loaded pre-trained DDPG model from {args.ddpg_load}")
+                        if new_method != current_control_method:
+                            print(f"Switching control method from {current_control_method} to {new_method}")
                             
-                        # Set DDPG training mode based on argument
-                        if new_method == 'DDPG' and args.ddpg_no_train and isinstance(controller, DDPGController):
-                            controller.set_training_mode(False)
-                            print("DDPG controller is in evaluation mode (no training)")
+                            # Save DDPG model if switching away from it and save path specified
+                            if current_control_method == 'DDPG' and args.ddpg_save and isinstance(controller, DDPGController):
+                                ddpg_save_path = args.ddpg_save
+                                controller.save_networks(ddpg_save_path)
+                                print(f"Saved DDPG model to {ddpg_save_path}")
+                            
+                            current_control_method = new_method
+                            
+                            # Create new controller with current target height
+                            current_target = controller.get_target_height()
+                            controller = create_controller(
+                                method=new_method,
+                                target_height=current_target,
+                                response_delay=physics.delay_time/2,
+                                dt=args.dt,
+                                **controller_params
+                            )
+                            
+                            # Load DDPG model if switching to it and load path specified
+                            if new_method == 'DDPG' and args.ddpg_load and isinstance(controller, DDPGController):
+                                if os.path.exists(args.ddpg_load):
+                                    controller.load_networks(args.ddpg_load)
+                                    print(f"Loaded pre-trained DDPG model from {args.ddpg_load}")
+                                
+                            # Set DDPG training mode based on argument
+                            if new_method == 'DDPG' and args.ddpg_no_train and isinstance(controller, DDPGController):
+                                controller.set_training_mode(False)
+                                print("DDPG controller is in evaluation mode (no training)")
+                    
+                    # Apply changes if requested
+                    if param_changes['apply_changes']:
+                        # Reset simulation state
+                        physics.reset()
+                        sensors.reset()
+                        kalman.reset(physics.position)
+                        controller.reset(controller.get_target_height())
+                        manual_thrust = False
+                        print("Applied parameter changes and reset simulation state.")
+                    
+                    # Update LiDAR visualization if changed
+                    if param_changes['lidar_detail_changed']:
+                        visualizer.show_lidar_detail = param_panel.get_lidar_detail_enabled()
+                    
+                    # Reset parameters if requested
+                    if param_changes['reset_params']:
+                        param_panel.reset_parameters()
                 
-                # Apply changes if requested
-                if param_changes['apply_changes']:
-                    # Reset simulation state
-                    physics.reset()
-                    sensors.reset()
-                    kalman.reset(physics.position)
-                    controller.reset(controller.get_target_height())
-                    manual_thrust = False
-                    print("Applied parameter changes and reset simulation state.")
+                # Draw parameter panel
+                param_panel.draw(visualizer.screen)
                 
-                # Update LiDAR visualization if changed
-                if param_changes['lidar_detail_changed']:
-                    visualizer.show_lidar_detail = param_panel.get_lidar_detail_enabled()
-                
-                # Reset parameters if requested
-                if param_changes['reset_params']:
-                    param_panel.reset_parameters()
-            
-            # Draw parameter panel
-            param_panel.draw(visualizer.screen)
-            
-            # Update display after drawing parameter panel
-            pygame.display.flip()
-        
+                # Update display after drawing parameter panel
+                pygame.display.flip()
+        else:
+            # For headless mode, provide some progress feedback
+            if step_counter % report_interval == 0:
+                avg_reward = sum(controller.reward_history[-report_interval:]) / min(report_interval, len(controller.reward_history))
+                error = controller.get_target_height() - est_pos
+                print(f"Step {step_counter}: Pos={est_pos:.2f}, Error={error:.2f}, Avg Reward={avg_reward:.4f}")
         # Increment step counter
         step_counter += 1
     
@@ -390,10 +411,15 @@ def main():
                     print(f"DDPG learning curve saved to {os.path.join(args.log_dir, 'ddpg_learning_curve.png')}")
                 except Exception as e:
                     print(f"Error generating DDPG learning curve: {e}")
+
+    if args.ddpg_save:
+        controller.save_networks(args.ddpg_save)
+        print(f"Saved trained model to {args.ddpg_save}")
     
     # Clean up
-    visualizer.close()
-    print("Simulation complete.")
+    if visualizer:
+        visualizer.close()
+        print("Simulation complete.")
 
 
 if __name__ == "__main__":
