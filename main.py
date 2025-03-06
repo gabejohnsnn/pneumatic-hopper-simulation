@@ -25,6 +25,7 @@ from analysis import SimulationLogger, plot_simulation_results, plot_kalman_perf
 
 # Import the controller factory function
 from controllers import create_controller
+from controllers.ddpg_controller import DDPGController
 
 
 def parse_arguments():
@@ -44,7 +45,7 @@ def parse_arguments():
                         help='Initial target height in meters (default: 3.0)')
     # Fix: Changed 'Bang-Bang' to 'BangBang' to avoid hyphen issues in command-line arguments
     parser.add_argument('--control', type=str, default='Hysteresis',
-                        choices=['Hysteresis', 'PID', 'BangBang'],
+                        choices=['Hysteresis', 'PID', 'BangBang', 'DDPG'],
                         help='Control method (default: Hysteresis)')
     
     # Sensor parameters
@@ -70,6 +71,14 @@ def parse_arguments():
                         help='Directory to store log files')
     parser.add_argument('--analyze', action='store_true',
                         help='Analyze and plot results after simulation ends')
+    
+    # DDPG specific parameters
+    parser.add_argument('--ddpg-load', type=str, default=None,
+                        help='Load pre-trained DDPG model from file')
+    parser.add_argument('--ddpg-save', type=str, default=None,
+                        help='Save trained DDPG model to file when simulation ends')
+    parser.add_argument('--ddpg-no-train', action='store_true',
+                        help='Disable DDPG training (evaluation mode only)')
     
     return parser.parse_args()
 
@@ -113,6 +122,19 @@ def main():
         response_delay=args.delay/2,  # For hysteresis controller
         dt=args.dt
     )
+    
+    # Load pre-trained DDPG model if specified and applicable
+    if control_method == 'DDPG' and args.ddpg_load:
+        if os.path.exists(args.ddpg_load):
+            controller.load_networks(args.ddpg_load)
+            print(f"Loaded pre-trained DDPG model from {args.ddpg_load}")
+        else:
+            print(f"Warning: Specified DDPG model file {args.ddpg_load} not found, using default initialization")
+    
+    # Set DDPG controller training mode based on argument
+    if control_method == 'DDPG' and args.ddpg_no_train:
+        controller.set_training_mode(False)
+        print("DDPG controller is in evaluation mode (no training)")
     
     # Set up visualization
     visualizer = Visualizer()
@@ -162,7 +184,12 @@ def main():
             control_input = 1.0 if manual_thrust else 0.0
         else:
             # Use the controller with estimated state from Kalman filter
-            control_input = controller.compute_control(est_pos, est_vel)
+            if current_control_method == 'DDPG':
+                control_input = controller.compute_control(est_pos, est_vel, est_acc)
+                # Provide reward for DDPG learning after control action is computed
+                controller.provide_reward(est_pos, est_vel)
+            else:
+                control_input = controller.compute_control(est_pos, est_vel)
         
         # Apply control to physics
         physics.apply_control(control_input)
@@ -197,6 +224,16 @@ def main():
                 pos_reading,
                 acc_reading
             )
+            
+            # Additional logging for DDPG rewards if applicable
+            if current_control_method == 'DDPG' and hasattr(controller, 'reward_history') and controller.reward_history:
+                # Get the most recent reward
+                recent_reward = controller.reward_history[-1] if controller.reward_history else 0
+                # Log as additional data
+                logger.log_additional(
+                    physics.simulation_time,
+                    {'reward': recent_reward}
+                )
         
         # Update visualization
         events = visualizer.update(
@@ -263,6 +300,13 @@ def main():
                     
                     if new_method != current_control_method:
                         print(f"Switching control method from {current_control_method} to {new_method}")
+                        
+                        # Save DDPG model if switching away from it and save path specified
+                        if current_control_method == 'DDPG' and args.ddpg_save and isinstance(controller, DDPGController):
+                            ddpg_save_path = args.ddpg_save
+                            controller.save_networks(ddpg_save_path)
+                            print(f"Saved DDPG model to {ddpg_save_path}")
+                        
                         current_control_method = new_method
                         
                         # Create new controller with current target height
@@ -274,6 +318,17 @@ def main():
                             dt=args.dt,
                             **controller_params
                         )
+                        
+                        # Load DDPG model if switching to it and load path specified
+                        if new_method == 'DDPG' and args.ddpg_load and isinstance(controller, DDPGController):
+                            if os.path.exists(args.ddpg_load):
+                                controller.load_networks(args.ddpg_load)
+                                print(f"Loaded pre-trained DDPG model from {args.ddpg_load}")
+                            
+                        # Set DDPG training mode based on argument
+                        if new_method == 'DDPG' and args.ddpg_no_train and isinstance(controller, DDPGController):
+                            controller.set_training_mode(False)
+                            print("DDPG controller is in evaluation mode (no training)")
                 
                 # Apply changes if requested
                 if param_changes['apply_changes']:
@@ -302,6 +357,12 @@ def main():
         # Increment step counter
         step_counter += 1
     
+    # Save DDPG model if requested before exiting
+    if current_control_method == 'DDPG' and args.ddpg_save and isinstance(controller, DDPGController):
+        ddpg_save_path = args.ddpg_save
+        controller.save_networks(ddpg_save_path)
+        print(f"Saved DDPG model to {ddpg_save_path}")
+    
     # Save log data if enabled
     log_file = None
     if logger:
@@ -313,6 +374,22 @@ def main():
             plot_simulation_results(data)
             plot_kalman_performance(data)
             plot_controller_performance(data)
+            
+            # Add DDPG specific plots if applicable
+            if current_control_method == 'DDPG' and 'additional' in data and 'reward' in data['additional']:
+                try:
+                    import matplotlib.pyplot as plt
+                    plt.figure(figsize=(10, 6))
+                    plt.plot(data['additional']['time'], data['additional']['reward'])
+                    plt.title('DDPG Learning Curve')
+                    plt.xlabel('Time (s)')
+                    plt.ylabel('Reward')
+                    plt.grid(True)
+                    plt.savefig(os.path.join(args.log_dir, 'ddpg_learning_curve.png'))
+                    plt.close()
+                    print(f"DDPG learning curve saved to {os.path.join(args.log_dir, 'ddpg_learning_curve.png')}")
+                except Exception as e:
+                    print(f"Error generating DDPG learning curve: {e}")
     
     # Clean up
     visualizer.close()
