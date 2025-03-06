@@ -6,6 +6,7 @@ Includes different control methodologies.
 from .hysteresis_controller import HysteresisController
 from .pid_controller import PIDController
 from .bang_bang_controller import BangBangController
+from .ddpg_controller import DDPGController
 
 # Function to create a controller based on method name
 def create_controller(method, target_height=3.0, **kwargs):
@@ -13,7 +14,7 @@ def create_controller(method, target_height=3.0, **kwargs):
     Factory function to create a controller of the specified type.
     
     Args:
-        method (str): Controller type ("Hysteresis", "PID", "Bang-Bang")
+        method (str): Controller type ("Hysteresis", "PID", "Bang-Bang", "DDPG")
         target_height (float): Target height for the controller
         **kwargs: Additional parameters for the specific controller
         
@@ -54,6 +55,27 @@ def create_controller(method, target_height=3.0, **kwargs):
             target_height=target_height,
             threshold=threshold,
             dt=dt
+        )
+    
+    elif method == "DDPG":
+        dt = kwargs.get('dt', 0.01)
+        hidden_dim = kwargs.get('hidden_dim', 64)
+        learning_rate = kwargs.get('learning_rate', 1e-4)
+        gamma = kwargs.get('gamma', 0.99)
+        tau = kwargs.get('tau', 1e-3)
+        noise_sigma = kwargs.get('noise_sigma', 0.2)
+        pretrain = kwargs.get('pretrain', True)
+        
+        return DDPGController(
+            target_height=target_height,
+            dt=dt,
+            hidden_dim=hidden_dim,
+            actor_lr=learning_rate,
+            critic_lr=learning_rate * 10,
+            gamma=gamma,
+            tau=tau,
+            noise_sigma=noise_sigma,
+            pretrain_nn=pretrain
         )
     
     else:
