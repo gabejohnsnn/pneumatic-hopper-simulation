@@ -69,6 +69,29 @@ class SimulationLogger:
         self.physics_data['velocity'].append(velocity)
         self.physics_data['acceleration'].append(acceleration)
         self.physics_data['thrust'].append(thrust)
+
+    def log_additional(self, time, data_dict):
+        """
+        Log additional custom data.
+        
+        Args:
+            time (float): Simulation time
+            data_dict (dict): Dictionary with additional data to log
+        """
+        if not hasattr(self, 'additional_data'):
+            self.additional_data = {
+                'time': [],
+            }
+            # Initialize dict entries for each key in data_dict
+            for key in data_dict:
+                self.additional_data[key] = []
+        
+        # Store time and data
+        self.additional_data['time'].append(time)
+        for key, value in data_dict.items():
+            if key not in self.additional_data:
+                self.additional_data[key] = [None] * (len(self.additional_data['time']) - 1)
+            self.additional_data[key].append(value)
     
     def log_kalman(self, time, position, velocity, acceleration, covariance=None):
         """Log Kalman filter estimates."""
@@ -119,6 +142,9 @@ class SimulationLogger:
         filepath = os.path.join(self.log_folder, filename)
         with open(filepath, 'wb') as f:
             pickle.dump(data, f)
+
+        if hasattr(self, 'additional_data'):
+            data['additional'] = self.additional_data
         
         print(f"Simulation data saved to {filepath}")
         return filepath
