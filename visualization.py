@@ -35,6 +35,14 @@ class Visualizer:
         # Scaling and coordinate system
         self.scale_factor = scale_factor
         self.ground_height = ground_height
+
+        # Add these lines to store persistent sensor data
+        self.persistent_lidar_reading = None
+        self.persistent_mpu_reading = None
+        self.lidar_update_counter = 0
+        self.mpu_update_counter = 0
+        self.lidar_stable_color = (0, 150, 0)  # Stable color for LiDAR
+        self.mpu_stable_color = (150, 0, 150)  # Stable color for MPU
         
         # Colors
         self.bg_color = (240, 240, 240)
@@ -60,6 +68,7 @@ class Visualizer:
         # Visualization flags
         self.show_kalman = True
         self.show_hysteresis = True
+        self.show_lidar_detail = True  # Flag for enhanced LiDAR visualization
 
         # Settings button (gear icon)
         self.settings_icon_size = 40
@@ -74,6 +83,14 @@ class Visualizer:
         self.show_lidar_detail = True  # Enhanced LiDAR visualization
         self.lidar_color = (0, 150, 0)  # Green for LiDAR visualization
         self.lidar_beam_color = (100, 200, 100, 150)
+        
+        # Add these lines to store persistent sensor data
+        self.persistent_lidar_reading = None
+        self.persistent_mpu_reading = None
+        self.lidar_update_counter = 0
+        self.mpu_update_counter = 0
+        self.lidar_stable_color = (0, 150, 0)  # Stable color for LiDAR
+        self.mpu_stable_color = (150, 0, 150)  # Stable color for MPU
         
         # Load or create gear icon
         self.gear_icon = self._create_gear_icon(self.settings_icon_size, (80, 80, 80))
@@ -300,9 +317,10 @@ class Visualizer:
         fps_text = self.font.render(f"FPS: {display_fps:.1f}", True, self.text_color)
         self.screen.blit(fps_text, (self.width - 100, self.height - 30))
     
+    
     def draw_sensors(self, lidar_reading, mpu_reading, new_lidar, new_mpu):
         """
-        Draw sensor readings and indicate when new readings are available.
+        Draw sensor readings with reduced flashing.
         
         Args:
             lidar_reading (float): Current LiDAR reading (height)
@@ -310,10 +328,27 @@ class Visualizer:
             new_lidar (bool): True if a new LiDAR reading was just received
             new_mpu (bool): True if a new MPU6050 reading was just received
         """
+        # Update persistent readings
+        if new_lidar and lidar_reading is not None:
+            self.persistent_lidar_reading = lidar_reading
+            self.lidar_update_counter = 5  # Show highlight for 5 frames
+        
+        if new_mpu and mpu_reading is not None:
+            self.persistent_mpu_reading = mpu_reading
+            self.mpu_update_counter = 3  # Show highlight for 3 frames
+        
+        # Count down the highlight counters
+        if self.lidar_update_counter > 0:
+            self.lidar_update_counter -= 1
+        if self.mpu_update_counter > 0:
+            self.mpu_update_counter -= 1
+        
         # Draw LiDAR reading
-        if lidar_reading is not None:
-            lidar_y = self.world_to_screen_y(lidar_reading)  # Calculate lidar_y first
-            lidar_color = (0, 200, 0) if new_lidar else (0, 100, 0)
+        if self.persistent_lidar_reading is not None:
+            lidar_y = self.world_to_screen_y(self.persistent_lidar_reading)  # Calculate lidar_y first
+            
+            # Determine color - briefly highlight when updated, then use stable color
+            lidar_color = (0, 200, 0) if self.lidar_update_counter > 0 else self.lidar_stable_color
             
             # Enhanced LiDAR visualization
             if self.show_lidar_detail:
@@ -335,30 +370,47 @@ class Visualizer:
                 
                 # Draw a dot at the measurement point
                 pygame.draw.circle(self.screen, lidar_color, 
-                                 ((self.width - self.control_panel_width) // 2, lidar_y), 5)
+                                ((self.width - self.control_panel_width) // 2, lidar_y), 5)
             
             # Standard line visualization
             pygame.draw.line(self.screen, lidar_color, 
                             (0, lidar_y), (50, lidar_y), 2)
             
-            # Draw LiDAR text
-            lidar_text = self.font.render(f"LiDAR: {lidar_reading:.2f}m", True, lidar_color)
+            # Draw LiDAR text with fixed position
+            lidar_box = pygame.Rect(10, lidar_y - 20, 120, 20)
+            pygame.draw.rect(self.screen, self.bg_color, lidar_box)  # Clear previous text
+            lidar_text = self.font.render(f"LiDAR: {self.persistent_lidar_reading:.2f}m", True, lidar_color)
             self.screen.blit(lidar_text, (10, lidar_y - 20))
         
-        # Draw MPU reading indication (just a text label in the corner)
-        if mpu_reading is not None:
-            mpu_color = (200, 0, 200) if new_mpu else (100, 0, 100)
-            mpu_text = self.font.render(f"MPU: {mpu_reading:.2f} m/s²", True, mpu_color)
+        # Draw MPU reading indication (fixed position in the corner)
+        if self.persistent_mpu_reading is not None:
+            mpu_color = (200, 0, 200) if self.mpu_update_counter > 0 else self.mpu_stable_color
+            
+            # Create a background rectangle to clear previous text
+            mpu_box = pygame.Rect(10, 10, 180, 20)
+            pygame.draw.rect(self.screen, self.bg_color, mpu_box)
+            
+            # Draw the updated text
+            mpu_text = self.font.render(f"MPU: {self.persistent_mpu_reading:.2f} m/s²", True, mpu_color)
             self.screen.blit(mpu_text, (10, 10))
 
     def draw_settings_button(self):
         """Draw the settings (gear) button in the corner."""
-        # Draw a circle behind the gear if settings are showing
-        if self.show_settings:
-            pygame.draw.circle(self.screen, (180, 180, 180), self.settings_icon_pos, self.settings_icon_size//2)
+        # Always draw a background circle to make it obvious this is clickable
+        bg_color = (180, 180, 180) if self.show_settings else (200, 200, 200)
+        pygame.draw.circle(self.screen, bg_color, self.settings_icon_pos, self.settings_icon_size//2)
+        
+        # Draw a border to make it stand out more
+        pygame.draw.circle(self.screen, (100, 100, 100), self.settings_icon_pos, self.settings_icon_size//2, 2)
         
         # Draw the gear icon
         self.screen.blit(self.gear_icon, self.settings_icon_rect)
+        
+        # Draw "Settings" text next to the gear
+        settings_text = self.font.render("Settings", True, (50, 50, 50))
+        text_pos = (self.settings_icon_pos[0] + self.settings_icon_size//2 + 5, 
+                    self.settings_icon_pos[1] - 8)
+        self.screen.blit(settings_text, text_pos)
     
     def update(self, physics_state, kalman_state, controller_data, sensor_data):
         """
@@ -452,6 +504,7 @@ class Visualizer:
         for event in events:
             if event.type == pygame.QUIT:
                 actions['quit'] = True
+            
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     actions['quit'] = True
@@ -472,14 +525,18 @@ class Visualizer:
                 elif event.key == pygame.K_l:
                     self.show_lidar_detail = not self.show_lidar_detail
                     actions['toggle_lidar'] = True
-                elif event.type == pygame.MOUSEBUTTONDOWN:
-                    if event.button == 1:  # Left mouse button
-                        # Print for debugging
-                        print(f"Mouse click at {event.pos}")
-                        if self.settings_icon_rect.collidepoint(event.pos):
-                            print("Settings button clicked!")
-                            self.show_settings = not self.show_settings
-                            actions['toggle_settings'] = True
+            
+            # Handle mouse events in a separate condition
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 1:  # Left mouse button
+                    # Print for debugging
+                    print(f"Mouse click at {event.pos}")
+                    
+                    # Check if click is inside the settings icon
+                    if self.settings_icon_rect.collidepoint(event.pos):
+                        print("Settings button clicked!")
+                        self.show_settings = not self.show_settings
+                        actions['toggle_settings'] = True
         
         return actions
     

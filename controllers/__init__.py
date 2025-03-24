@@ -7,6 +7,7 @@ from .hysteresis_controller import HysteresisController
 from .pid_controller import PIDController
 from .bang_bang_controller import BangBangController
 from .ddpg_controller import DDPGController
+from .mpc_controller import MPCController
 
 # Function to create a controller based on method name
 def create_controller(method, target_height=3.0, **kwargs):
@@ -76,6 +77,22 @@ def create_controller(method, target_height=3.0, **kwargs):
             tau=tau,
             noise_sigma=noise_sigma,
             pretrain_nn=pretrain
+        )
+    
+    elif method == "MPC":
+        prediction_horizon = kwargs.get('prediction_horizon', 15)
+        dt = kwargs.get('dt', 0.01)
+        delay_steps = int(kwargs.get('response_delay', 0.1) / dt)
+        max_thrust = kwargs.get('max_thrust', 20.0)
+        mass = kwargs.get('mass', 1.0)
+        
+        return MPCController(
+            target_height=target_height,
+            prediction_horizon=prediction_horizon,
+            dt=dt,
+            delay_steps=delay_steps,
+            max_thrust=max_thrust,
+            mass=mass
         )
     
     else:

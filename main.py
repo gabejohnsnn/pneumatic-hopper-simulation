@@ -20,8 +20,248 @@ from physics import PhysicsEngine
 from sensor import SensorSystem
 from kalman_filter import KalmanFilter
 from visualization import Visualizer
-from parameters import ParameterPanel
+# parameters.py no longer used as we've replaced it with direct pygame UI
 from analysis import SimulationLogger, plot_simulation_results, plot_kalman_performance, plot_controller_performance
+
+def show_simple_settings_dialog(screen, physics, controller, lidar_detail, controller_type="Default"):
+    """
+    Display a simple settings dialog using direct Pygame rendering.
+    
+    Args:
+        screen: Pygame screen to draw on
+        physics: Physics engine instance
+        controller: Current controller instance
+        lidar_detail: Whether to show enhanced LiDAR visualization
+        controller_type: Type of controller (for specialized settings)
+    
+    Returns:
+        tuple: (changes_applied, new_settings) where:
+            - changes_applied is a boolean (True if applied, False if canceled)
+            - new_settings is a dict with updated values (if applied)
+    """
+    # Get screen dimensions
+    screen_width, screen_height = screen.get_size()
+    
+    # Settings panel dimensions
+    panel_width = 500
+    panel_height = 500
+    panel_x = (screen_width - panel_width) // 2
+    panel_y = (screen_height - panel_height) // 2
+    
+    # Create font and colors
+    font_large = pygame.font.SysFont('Arial', 24, bold=True)
+    font = pygame.font.SysFont('Arial', 18)
+    font_small = pygame.font.SysFont('Arial', 16)
+    
+    bg_color = (240, 240, 240)
+    title_color = (50, 50, 150)
+    text_color = (0, 0, 0)
+    slider_color = (180, 180, 180)
+    slider_handle_color = (100, 100, 100)
+    button_color = (200, 200, 200)
+    button_hover_color = (220, 220, 220)
+    
+    # Save initial settings for potential cancellation
+    current_settings = {
+        'mass': physics.mass,
+        'max_thrust': physics.max_thrust,
+        'delay': physics.delay_time,
+        'air_resistance': physics.air_resistance,
+        'target_height': controller.get_target_height(),
+        'lidar_detail': lidar_detail
+    }
+    
+    # Create sliders for basic parameters
+    sliders = {
+        'mass': {'value': physics.mass, 'min': 0.1, 'max': 5.0, 'rect': pygame.Rect(panel_x + 200, panel_y + 100, 200, 20)},
+        'thrust': {'value': physics.max_thrust, 'min': 5.0, 'max': 50.0, 'rect': pygame.Rect(panel_x + 200, panel_y + 150, 200, 20)},
+        'delay': {'value': physics.delay_time, 'min': 0.0, 'max': 0.5, 'rect': pygame.Rect(panel_x + 200, panel_y + 200, 200, 20)},
+        'air_res': {'value': physics.air_resistance, 'min': 0.0, 'max': 0.5, 'rect': pygame.Rect(panel_x + 200, panel_y + 250, 200, 20)},
+        'target': {'value': controller.get_target_height(), 'min': 0.5, 'max': 10.0, 'rect': pygame.Rect(panel_x + 200, panel_y + 300, 200, 20)}
+    }
+    
+    # Add MPC-specific sliders if the controller is MPC
+    if controller_type == "MPC":
+        # Get current values from the MPC controller
+        prediction_horizon = getattr(controller, 'prediction_horizon', 15)
+        
+        # Add MPC-specific sliders
+        sliders['horizon'] = {
+            'value': prediction_horizon, 
+            'min': 5, 
+            'max': 30, 
+            'rect': pygame.Rect(panel_x + 200, panel_y + 350, 200, 20)
+        }
+    
+    # Create buttons
+    apply_button = pygame.Rect(panel_x + 150, panel_y + 400, 100, 40)
+    cancel_button = pygame.Rect(panel_x + 270, panel_y + 400, 100, 40)
+    
+    # Create checkbox for LiDAR detail - position depends on controller type
+    if controller_type == "MPC":
+        # Move checkbox lower for MPC since we have the horizon slider
+        lidar_checkbox = pygame.Rect(panel_x + 200, panel_y + 380, 20, 20)
+    else:
+        lidar_checkbox = pygame.Rect(panel_x + 200, panel_y + 350, 20, 20)
+    lidar_checked = lidar_detail
+    
+    # Main dialog loop
+    dialog_running = True
+    dragging_slider = None
+    changes_applied = False
+    new_settings = None  # Initialize new_settings
+    
+    while dialog_running:
+        # Create a semi-transparent overlay for background dimming
+        overlay = pygame.Surface((screen_width, screen_height), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 128))  # Semi-transparent black
+        screen.blit(overlay, (0, 0))
+        
+        # Draw panel background
+        panel_rect = pygame.Rect(panel_x, panel_y, panel_width, panel_height)
+        pygame.draw.rect(screen, bg_color, panel_rect, border_radius=10)
+        pygame.draw.rect(screen, (100, 100, 100), panel_rect, 2, border_radius=10)
+        
+        # Draw title
+        title = font_large.render("Simulation Settings", True, title_color)
+        screen.blit(title, (panel_x + (panel_width - title.get_width()) // 2, panel_y + 30))
+        
+        # Draw sliders and labels
+        mass_label = font.render(f"Mass: {sliders['mass']['value']:.2f} kg", True, text_color)
+        screen.blit(mass_label, (panel_x + 50, panel_y + 100))
+        
+        thrust_label = font.render(f"Max Thrust: {sliders['thrust']['value']:.1f} N", True, text_color)
+        screen.blit(thrust_label, (panel_x + 50, panel_y + 150))
+        
+        delay_label = font.render(f"Delay: {sliders['delay']['value']:.2f} s", True, text_color)
+        screen.blit(delay_label, (panel_x + 50, panel_y + 200))
+        
+        air_res_label = font.render(f"Air Resistance: {sliders['air_res']['value']:.2f}", True, text_color)
+        screen.blit(air_res_label, (panel_x + 50, panel_y + 250))
+        
+        target_label = font.render(f"Target Height: {sliders['target']['value']:.2f} m", True, text_color)
+        screen.blit(target_label, (panel_x + 50, panel_y + 300))
+        
+        # Draw MPC-specific labels if applicable
+        if controller_type == "MPC" and 'horizon' in sliders:
+            horizon_label = font.render(f"Prediction Horizon: {int(sliders['horizon']['value'])}", True, text_color)
+            screen.blit(horizon_label, (panel_x + 50, panel_y + 350))
+        
+        # Draw sliders
+        for key, slider in sliders.items():
+            # Draw slider track
+            pygame.draw.rect(screen, slider_color, slider['rect'])
+            
+            # Calculate handle position
+            value_ratio = (slider['value'] - slider['min']) / (slider['max'] - slider['min'])
+            handle_x = slider['rect'].left + int(value_ratio * slider['rect'].width)
+            handle_rect = pygame.Rect(handle_x - 5, slider['rect'].top - 5, 10, slider['rect'].height + 10)
+            
+            # Draw handle
+            pygame.draw.rect(screen, slider_handle_color, handle_rect, border_radius=5)
+        
+        # Draw LiDAR checkbox
+        pygame.draw.rect(screen, (255, 255, 255), lidar_checkbox)
+        pygame.draw.rect(screen, (0, 0, 0), lidar_checkbox, 1)
+        if lidar_checked:
+            # Draw X mark
+            pygame.draw.line(screen, (0, 0, 0), 
+                            (lidar_checkbox.left + 3, lidar_checkbox.top + 3),
+                            (lidar_checkbox.right - 3, lidar_checkbox.bottom - 3), 2)
+            pygame.draw.line(screen, (0, 0, 0), 
+                            (lidar_checkbox.left + 3, lidar_checkbox.bottom - 3),
+                            (lidar_checkbox.right - 3, lidar_checkbox.top + 3), 2)
+        
+        # Position the LiDAR label correctly based on controller type
+        lidar_label = font.render("Show Enhanced LiDAR", True, text_color)
+        if controller_type == "MPC":
+            screen.blit(lidar_label, (panel_x + 230, panel_y + 380))
+        else:
+            screen.blit(lidar_label, (panel_x + 230, panel_y + 350))
+        
+        # Draw buttons
+        pygame.draw.rect(screen, button_color, apply_button, border_radius=5)
+        pygame.draw.rect(screen, (0, 0, 0), apply_button, 1, border_radius=5)
+        apply_text = font.render("Apply", True, text_color)
+        screen.blit(apply_text, (apply_button.x + (apply_button.width - apply_text.get_width()) // 2,
+                               apply_button.y + (apply_button.height - apply_text.get_height()) // 2))
+        
+        pygame.draw.rect(screen, button_color, cancel_button, border_radius=5)
+        pygame.draw.rect(screen, (0, 0, 0), cancel_button, 1, border_radius=5)
+        cancel_text = font.render("Cancel", True, text_color)
+        screen.blit(cancel_text, (cancel_button.x + (cancel_button.width - cancel_text.get_width()) // 2,
+                                cancel_button.y + (cancel_button.height - cancel_text.get_height()) // 2))
+        
+        # Process events
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                dialog_running = False
+                
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 1:  # Left mouse button
+                    mouse_pos = pygame.mouse.get_pos()
+                    
+                    # Check if clicked on slider handle
+                    for key, slider in sliders.items():
+                        value_ratio = (slider['value'] - slider['min']) / (slider['max'] - slider['min'])
+                        handle_x = slider['rect'].left + int(value_ratio * slider['rect'].width)
+                        handle_rect = pygame.Rect(handle_x - 10, slider['rect'].top - 10, 20, slider['rect'].height + 20)
+                        
+                        if handle_rect.collidepoint(mouse_pos):
+                            dragging_slider = key
+                            break
+                    
+                    # Check if clicked on checkbox
+                    if lidar_checkbox.collidepoint(mouse_pos):
+                        lidar_checked = not lidar_checked
+                    
+                    # Check if clicked on buttons
+                    if apply_button.collidepoint(mouse_pos):
+                        # Store the base settings
+                        new_settings = {
+                            'mass': sliders['mass']['value'],
+                            'max_thrust': sliders['thrust']['value'],
+                            'delay_time': sliders['delay']['value'],
+                            'air_resistance': sliders['air_res']['value'],
+                            'target_height': sliders['target']['value'],
+                            'lidar_detail': lidar_checked
+                        }
+                        
+                        # Add MPC-specific settings if applicable
+                        if controller_type == "MPC" and 'horizon' in sliders:
+                            new_settings['prediction_horizon'] = int(sliders['horizon']['value'])
+                        
+                        changes_applied = True
+                        dialog_running = False
+                        
+                    if cancel_button.collidepoint(mouse_pos):
+                        # Cancel and close dialog
+                        dialog_running = False
+            
+            elif event.type == pygame.MOUSEBUTTONUP:
+                if event.button == 1:  # Left mouse button
+                    dragging_slider = None
+            
+            elif event.type == pygame.MOUSEMOTION:
+                if dragging_slider:
+                    mouse_x = pygame.mouse.get_pos()[0]
+                    slider = sliders[dragging_slider]
+                    
+                    # Calculate new slider value based on mouse position
+                    value_ratio = max(0, min(1, (mouse_x - slider['rect'].left) / slider['rect'].width))
+                    slider['value'] = slider['min'] + value_ratio * (slider['max'] - slider['min'])
+            
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    # ESC key closes dialog without applying changes
+                    dialog_running = False
+        
+        # Update display
+        pygame.display.flip()
+        pygame.time.delay(10)  # Small delay to reduce CPU usage
+    
+    # Return both the status and the new settings (or None if canceled)
+    return (changes_applied, new_settings if changes_applied else None)
 
 # Import the controller factory function
 from controllers import create_controller
@@ -45,7 +285,7 @@ def parse_arguments():
                         help='Initial target height in meters (default: 3.0)')
     # Fix: Changed 'Bang-Bang' to 'BangBang' to avoid hyphen issues in command-line arguments
     parser.add_argument('--control', type=str, default='Hysteresis',
-                        choices=['Hysteresis', 'PID', 'BangBang', 'DDPG'],
+                        choices=['Hysteresis', 'PID', 'BangBang', 'DDPG', 'MPC'],
                         help='Control method (default: Hysteresis)')
     
     # Sensor parameters
@@ -146,24 +386,19 @@ def main():
         controller.set_training_mode(False)
         print("DDPG controller is in evaluation mode (no training)")
     
-        # Set up visualization
-        visualizer = None
-        if not args.headless:
-            visualizer = Visualizer()
-        
-        # Set up parameter panel if enabled
-        param_panel = None
-        param_panel_visible = False
-        if not args.no_params:
-            param_panel = ParameterPanel(400, 600, physics, controller, lidar_detail_enabled=visualizer.show_lidar_detail)
-            param_panel.set_visible(param_panel_visible)
-        
-        # Initialize data logger if needed
-        logger = None
-        if args.log:
-            if not os.path.exists(args.log_dir):
-                os.makedirs(args.log_dir)
-            logger = SimulationLogger(log_folder=args.log_dir)
+    # Set up visualization
+    visualizer = None
+    if not args.headless:
+        visualizer = Visualizer()
+    
+    # We're no longer using the parameter panel
+    
+    # Initialize data logger if needed
+    logger = None
+    if args.log:
+        if not os.path.exists(args.log_dir):
+            os.makedirs(args.log_dir)
+        logger = SimulationLogger(log_folder=args.log_dir)
     
     # Initialize flags
     running = True
@@ -172,6 +407,7 @@ def main():
     step_counter = 0
     max_steps = 1000000
     current_control_method = control_method  # Fix: Use the corrected method name
+    simulation_paused = False  # Add pause flag
 
     report_interval = 10000
     
@@ -180,34 +416,41 @@ def main():
         # Get time delta for UI updates
         time_delta = visualizer.clock.get_time() / 1000.0
         
-        # Step the physics simulation
-        physics.step()
-        
-        # Update sensors
-        pos_reading, acc_reading, new_lidar, new_mpu = sensors.update(
-            physics.simulation_time,
-            physics.position,
-            physics.acceleration
-        )
-        
-        # Update Kalman filter with sensor readings
-        kalman.step(pos_reading, acc_reading)
-        est_pos, est_vel, est_acc = kalman.get_state()
-        
-        # Calculate control input
-        if manual_mode:
-            control_input = 1.0 if manual_thrust else 0.0
-        else:
-            # Use the controller with estimated state from Kalman filter
-            if current_control_method == 'DDPG':
-                control_input = controller.compute_control(est_pos, est_vel, est_acc)
-                # Provide reward for DDPG learning after control action is computed
-                controller.provide_reward(est_pos, est_vel)
+        # Only update physics when not paused
+        if not simulation_paused:
+            # Step the physics simulation
+            physics.step()
+            
+            # Update sensors
+            pos_reading, acc_reading, new_lidar, new_mpu = sensors.update(
+                physics.simulation_time,
+                physics.position,
+                physics.acceleration
+            )
+            
+            # Update Kalman filter with sensor readings
+            kalman.step(pos_reading, acc_reading)
+            est_pos, est_vel, est_acc = kalman.get_state()
+            
+            # Calculate control input
+            if manual_mode:
+                control_input = 1.0 if manual_thrust else 0.0
             else:
-                control_input = controller.compute_control(est_pos, est_vel)
-        
-        # Apply control to physics
-        physics.apply_control(control_input)
+                # Use the controller with estimated state from Kalman filter
+                if current_control_method == 'DDPG':
+                    control_input = controller.compute_control(est_pos, est_vel, est_acc)
+                    # Provide reward for DDPG learning after control action is computed
+                    controller.provide_reward(est_pos, est_vel)
+                else:
+                    control_input = controller.compute_control(est_pos, est_vel)
+            
+            # Apply control to physics
+            physics.apply_control(control_input)
+        else:
+            # When paused, just get the current state values without updating them
+            est_pos, est_vel, est_acc = kalman.get_state()
+            pos_reading, acc_reading = sensors.get_latest_readings()
+            new_lidar, new_mpu = False, False
         
         # Log data if enabled (with frequency control)
         if logger and step_counter % args.log_freq == 0:
@@ -269,11 +512,21 @@ def main():
                 running = False
             
             if actions['reset']:
+                # Reset all simulation components
                 physics.reset()
                 sensors.reset()
                 kalman.reset(physics.position)
                 controller.reset()
                 manual_thrust = False
+                
+                # Ensure simulation is running
+                simulation_paused = False
+                
+                # Print confirmation
+                print("Simulation reset and resumed")
+                manual_mode = args.no_auto  # Reset to default control mode
+                simulation_paused = False   # Ensure simulation isn't paused
+                print("Simulation reset - control system restarted")
             
             if actions['toggle_thrust']:
                 if manual_mode:
@@ -291,84 +544,104 @@ def main():
             
             if actions['toggle_lidar']:
                 visualizer.show_lidar_detail = not visualizer.show_lidar_detail
-                if param_panel:
-                    param_panel.lidar_detail_enabled = visualizer.show_lidar_detail
-                    param_panel._update_checkbox_states()
             
             # Handle settings button toggle
             if actions['toggle_settings']:
-                param_panel_visible = not param_panel_visible
-                if param_panel:
-                    param_panel.set_visible(param_panel_visible)
-        
-            # Handle parameter panel events if visible
-            if param_panel and param_panel_visible:
-                param_panel.update(time_delta)
+                # Pause the simulation
+                simulation_paused = True
                 
-                # Process events through parameter panel
-                for event in events:
-                    param_changes = param_panel.handle_event(event)
+                # Save current parameter values to restore if needed
+                old_mass = physics.mass
+                old_max_thrust = physics.max_thrust
+                old_delay = physics.delay_time
+                old_air_resistance = physics.air_resistance
+                old_target = controller.get_target_height()
+                
+                # Show a very simple dialog using Pygame directly
+                if not args.headless and visualizer:
+                    # Determine controller type for appropriate settings dialog
+                    controller_type = "Default"
+                    if current_control_method == 'MPC':
+                        controller_type = "MPC"
                     
-                    # Check if controller method changed
-                    if param_changes['control_method_changed']:
-                        controller_params = param_panel.get_controller_parameters()
-                        new_method = controller_params['method']
+                    # Use a function to display and handle a simple settings menu
+                    changes_applied, new_settings = show_simple_settings_dialog(
+                        visualizer.screen, 
+                        physics, 
+                        controller, 
+                        visualizer.show_lidar_detail,
+                        controller_type
+                    )
+                    
+                    if changes_applied and new_settings:
+                        # Apply the new settings
+                        physics.mass = new_settings['mass']
+                        physics.max_thrust = new_settings['max_thrust']
+                        physics.delay_time = new_settings['delay_time']
+                        physics.delay_steps = int(physics.delay_time / physics.dt)
+                        physics.control_history = [0.0] * physics.delay_steps
+                        physics.air_resistance = new_settings['air_resistance']
                         
-                        if new_method != current_control_method:
-                            print(f"Switching control method from {current_control_method} to {new_method}")
+                        # Apply target height
+                        if hasattr(controller, 'set_target_height'):
+                            controller.set_target_height(new_settings['target_height'])
                             
-                            # Save DDPG model if switching away from it and save path specified
-                            if current_control_method == 'DDPG' and args.ddpg_save and isinstance(controller, DDPGController):
-                                ddpg_save_path = args.ddpg_save
-                                controller.save_networks(ddpg_save_path)
-                                print(f"Saved DDPG model to {ddpg_save_path}")
-                            
-                            current_control_method = new_method
-                            
-                            # Create new controller with current target height
-                            current_target = controller.get_target_height()
-                            controller = create_controller(
-                                method=new_method,
-                                target_height=current_target,
-                                response_delay=physics.delay_time/2,
-                                dt=args.dt,
-                                **controller_params
-                            )
-                            
-                            # Load DDPG model if switching to it and load path specified
-                            if new_method == 'DDPG' and args.ddpg_load and isinstance(controller, DDPGController):
-                                if os.path.exists(args.ddpg_load):
-                                    controller.load_networks(args.ddpg_load)
-                                    print(f"Loaded pre-trained DDPG model from {args.ddpg_load}")
+                        # Apply MPC-specific settings
+                        if current_control_method == 'MPC' and 'prediction_horizon' in new_settings:
+                            if hasattr(controller, 'prediction_horizon'):
+                                controller.prediction_horizon = new_settings['prediction_horizon']
+                                # Reset controller's initial guess to match new horizon
+                                controller.initial_guess = np.ones(controller.prediction_horizon) * 0.5
+                                controller.last_solution = None
+                                print(f"Updated MPC prediction horizon to {controller.prediction_horizon}")
                                 
-                            # Set DDPG training mode based on argument
-                            if new_method == 'DDPG' and args.ddpg_no_train and isinstance(controller, DDPGController):
-                                controller.set_training_mode(False)
-                                print("DDPG controller is in evaluation mode (no training)")
-                    
-                    # Apply changes if requested
-                    if param_changes['apply_changes']:
-                        # Reset simulation state
+                        visualizer.show_lidar_detail = new_settings['lidar_detail']
+                        print("Applied new settings to simulation")
+                        
+                        # Reset after applying settings to ensure proper simulation restart
                         physics.reset()
                         sensors.reset()
                         kalman.reset(physics.position)
-                        controller.reset(controller.get_target_height())
+                        controller.reset()
                         manual_thrust = False
-                        print("Applied parameter changes and reset simulation state.")
-                    
-                    # Update LiDAR visualization if changed
-                    if param_changes['lidar_detail_changed']:
-                        visualizer.show_lidar_detail = param_panel.get_lidar_detail_enabled()
-                    
-                    # Reset parameters if requested
-                    if param_changes['reset_params']:
-                        param_panel.reset_parameters()
+                        print("Simulation reset with new settings")
+                    else:
+                        # User canceled, restore old values if needed
+                        physics.mass = old_mass
+                        physics.max_thrust = old_max_thrust
+                        physics.delay_time = old_delay
+                        physics.air_resistance = old_air_resistance
+                        if hasattr(controller, 'set_target_height'):
+                            controller.set_target_height(old_target)
                 
-                # Draw parameter panel
-                param_panel.draw(visualizer.screen)
+                # Unpause and make sure the controller is in the right mode
+                simulation_paused = False
+                manual_mode = args.no_auto  # Reset to command line default
                 
-                # Update display after drawing parameter panel
-                pygame.display.flip()
+                # Give the controller a kick-start with an initial control computation
+                est_pos, est_vel, est_acc = kalman.get_state()
+                if not manual_mode:
+                    # Compute an initial control action to get things moving
+                    if current_control_method == 'DDPG':
+                        control_input = controller.compute_control(est_pos, est_vel, est_acc)
+                    else:
+                        control_input = controller.compute_control(est_pos, est_vel)
+                        
+                    # Apply this initial control to physics
+                    physics.apply_control(control_input)
+                    
+                print("Simulation resumed with control system active")
+                control_input = 0.0
+                if not manual_mode:
+                    # Force the controller to compute an initial control value
+                    est_pos, est_vel, est_acc = kalman.get_state()
+                    if current_control_method == 'DDPG':
+                        control_input = controller.compute_control(est_pos, est_vel, est_acc)
+                    else:
+                        control_input = controller.compute_control(est_pos, est_vel)
+                    physics.apply_control(control_input)
+        
+            # All parameter panel handling is now done in the show_simple_settings_dialog function
         else:
             # For headless mode, provide some progress feedback
             if step_counter % report_interval == 0:

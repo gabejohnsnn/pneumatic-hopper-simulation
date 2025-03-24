@@ -34,6 +34,9 @@ class ParameterPanel:
         else:
             self.current_control_method = "Hysteresis"  # Default
         
+        # Create a separate surface for the panel
+        self.panel_surface = None
+        
         # Initialize pygame_gui manager
         self.ui_manager = pygame_gui.UIManager((width, height))
         
@@ -49,6 +52,7 @@ class ParameterPanel:
         # Flag to indicate if changes should be applied
         self.apply_changes = False
         self.is_visible = False
+        self.initialized = False
     
     def create_ui_elements(self):
         # Spacing and positioning parameters
@@ -62,10 +66,19 @@ class ParameterPanel:
         
         # Title
         self.title_label = pygame_gui.elements.UILabel(
-            relative_rect=pygame.Rect((panel_padding, y_pos), (self.width - 2*panel_padding, 30)),
+            relative_rect=pygame.Rect((panel_padding, y_pos), (self.width - 2*panel_padding - 30, 30)),
             text="Parameter Adjustment Panel",
             manager=self.ui_manager
         )
+        
+        # Close button (X in top-right corner)
+        self.close_button = pygame_gui.elements.UIButton(
+            relative_rect=pygame.Rect((self.width - panel_padding - 25, y_pos), (25, 25)),
+            text="X",
+            manager=self.ui_manager,
+            tool_tip_text="Close Parameter Panel"
+        )
+        
         y_pos += 40
         
         # Physics Parameters Section
@@ -447,6 +460,10 @@ class ParameterPanel:
             elif event.ui_element == self.apply_button:
                 changes['apply_changes'] = True
                 self.apply_parameter_changes()
+            elif event.ui_element == self.close_button:
+                # Close the panel
+                self.set_visible(False)
+                changes['toggle_settings'] = True  # So main.py knows settings were toggled
             elif event.ui_element == self.lidar_checkbox:
                 self.lidar_detail_enabled = not self.lidar_detail_enabled
                 changes['lidar_detail_changed'] = True
@@ -508,13 +525,25 @@ class ParameterPanel:
         self.apply_changes = True
     
     def update(self, time_delta):
-        self.ui_manager.update(time_delta)
+        # Only update UI manager when panel is visible
+        if self.is_visible:
+            self.ui_manager.update(time_delta)
     
     def draw(self, surface):
+        """Draw the parameter panel on the main surface."""
         if self.is_visible:
+            # Create semi-transparent overlay
+            overlay = pygame.Surface((surface.get_width(), surface.get_height()), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 128))  # Semi-transparent black
+            surface.blit(overlay, (0, 0))
+            
             # Draw panel background
             pygame.draw.rect(surface, (240, 240, 240), self.panel_rect)
-            pygame.draw.rect(surface, (180, 180, 180), self.panel_rect, 2)  # Border
+            pygame.draw.rect(surface, (100, 100, 100), self.panel_rect, 2)  # Darker border
+            
+            # Draw title bar
+            title_bar = pygame.Rect(self.panel_rect.left, self.panel_rect.top, self.panel_rect.width, 40)
+            pygame.draw.rect(surface, (200, 200, 200), title_bar)
             
             # Draw UI elements
             self.ui_manager.draw_ui(surface)
@@ -582,7 +611,33 @@ class ParameterPanel:
     
     def set_visible(self, visible):
         """Set whether the parameter panel is visible."""
-        self.is_visible = visible
+        if self.is_visible != visible:
+            print(f"Setting parameter panel visibility to: {visible}")
+            self.is_visible = visible
+            
+            # On each visibility toggle, make sure the UI manager is properly setup
+            # Get screen dimensions
+            screen_info = pygame.display.Info()
+            
+            # Calculate center position
+            panel_x = (screen_info.current_w - self.width) // 2
+            panel_y = (screen_info.current_h - self.height) // 2
+            self.panel_rect.topleft = (panel_x, panel_y)
+            
+            # Create a new UI manager with the correct position
+            if visible:
+                # Reset UI manager
+                self.ui_manager = pygame_gui.UIManager((self.width, self.height))
+                
+                # Recreate all UI elements
+                self.create_ui_elements()
+                
+                # Update with initial values
+                self.update_ui_from_parameters()
+                self.update_controller_ui_visibility()
+                self._update_checkbox_states()
+                
+                print(f"Parameter panel initialized at: {panel_x}, {panel_y}")
     
     def get_lidar_detail_enabled(self):
         return self.lidar_detail_enabled
