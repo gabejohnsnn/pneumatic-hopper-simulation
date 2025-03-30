@@ -8,6 +8,7 @@ from .pid_controller import PIDController
 from .bang_bang_controller import BangBangController
 from .ddpg_controller import DDPGController
 from .mpc_controller import MPCController
+from .ppo_controller import PPOController
 
 # Function to create a controller based on method name
 def create_controller(method, target_height=3.0, **kwargs):
@@ -15,7 +16,7 @@ def create_controller(method, target_height=3.0, **kwargs):
     Factory function to create a controller of the specified type.
     
     Args:
-        method (str): Controller type ("Hysteresis", "PID", "Bang-Bang", "DDPG")
+        method (str): Controller type ("Hysteresis", "PID", "Bang-Bang", "DDPG", "MPC", "PPO")
         target_height (float): Target height for the controller
         **kwargs: Additional parameters for the specific controller
         
@@ -93,6 +94,18 @@ def create_controller(method, target_height=3.0, **kwargs):
             delay_steps=delay_steps,
             max_thrust=max_thrust,
             mass=mass
+        )
+    
+    elif method == "PPO":
+        dt = kwargs.get('dt', 0.01)
+        model_path = kwargs.get('model_path', None)
+        training_mode = kwargs.get('training_mode', False)
+        
+        return PPOController(
+            target_height=target_height,
+            dt=dt,
+            model_path=model_path,
+            training_mode=training_mode
         )
     
     else:

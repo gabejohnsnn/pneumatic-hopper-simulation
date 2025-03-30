@@ -1,4 +1,4 @@
-A physics-based simulation of a self-leveling pneumatic hopper system constrained to vertical movement. This project demonstrates altitude control using various control methods, including delayed hysteresis control, PID control, bang-bang control, and reinforcement learning with DDPG (Deep Deterministic Policy Gradient) combined with Kalman filtering for state estimation.
+A physics-based simulation of a self-leveling pneumatic hopper system constrained to vertical movement. This project demonstrates altitude control using various control methods, including delayed hysteresis control, PID control, bang-bang control, and reinforcement learning with DDPG (Deep Deterministic Policy Gradient) and PPO (Proximal Policy Optimization) combined with Kalman filtering for state estimation.
 
 ## Overview
 
@@ -12,7 +12,8 @@ This simulation models a pneumatically actuated test bed for altitude control, s
   - Delayed hysteresis control
   - PID control with anti-windup
   - Bang-Bang control based on Pontryagin's maximum principle
-  - DDPG reinforcement learning control (model-free learning)
+  - DDPG reinforcement learning control (model-free, continuous action space)
+  - PPO reinforcement learning control (model-free, discrete action space)
   - Model Predictive Control (MPC) for advanced prediction-based control
 - Interactive parameter adjustment during simulation
 - Pygame-based visualization of the system dynamics and control methods
@@ -53,10 +54,11 @@ The simulation offers various command line arguments for customization:
 
 ```
 usage: main.py [-h] [--mass MASS] [--thrust THRUST] [--delay DELAY] [--target TARGET] 
-               [--controllers {Hysteresis,PID,BangBang,DDPG,MPC} [{Hysteresis,PID,BangBang,DDPG,MPC} ...]]
+               [--controllers {Hysteresis,PID,BangBang,DDPG,MPC,PPO} [{Hysteresis,PID,BangBang,DDPG,MPC,PPO} ...]]
                [--lidar-noise LIDAR_NOISE] [--mpu-noise MPU_NOISE] [--dt DT] [--duration DURATION]
                [--no-auto] [--headless] [--log] [--log-freq LOG_FREQ] [--log-dir LOG_DIR] 
                [--analyze] [--compare] [--ddpg-load DDPG_LOAD] [--ddpg-save DDPG_SAVE] [--ddpg-no-train]
+               [--ppo-load PPO_LOAD] [--ppo-save PPO_SAVE] [--ppo-no-train] [--ppo-train] [--ppo-train-episodes PPO_TRAIN_EPISODES]
 
 options:
   -h, --help            show this help message and exit
@@ -64,7 +66,7 @@ options:
   --thrust THRUST       Maximum thrust force in N (default: 20.0)
   --delay DELAY         Pneumatic delay time in seconds (default: 0.2)
   --target TARGET       Initial target height in meters (default: 3.0)
-  --controllers {Hysteresis,PID,BangBang,DDPG,MPC} [{Hysteresis,PID,BangBang,DDPG,MPC} ...]
+  --controllers {Hysteresis,PID,BangBang,DDPG,MPC,PPO} [{Hysteresis,PID,BangBang,DDPG,MPC,PPO} ...]
                         Control methods to simulate (default: Hysteresis)
   --lidar-noise LIDAR_NOISE
                         LiDAR measurement noise std deviation (default: 0.05)
@@ -82,6 +84,12 @@ options:
   --ddpg-load DDPG_LOAD Load pre-trained DDPG model from file
   --ddpg-save DDPG_SAVE Save trained DDPG model to file when simulation ends
   --ddpg-no-train       Disable DDPG training (evaluation mode only)
+  --ppo-load PPO_LOAD   Load pre-trained PPO model from file
+  --ppo-save PPO_SAVE   Save trained PPO model to file when simulation ends
+  --ppo-no-train        Disable PPO training (evaluation mode only)
+  --ppo-train           Train a PPO model before starting simulation
+  --ppo-train-episodes PPO_TRAIN_EPISODES
+                        Number of episodes to train PPO (default: 100)
 ```
 
 ## Controls
@@ -104,7 +112,7 @@ The simulation includes a parameter adjustment panel allowing you to modify vari
   - Air resistance
 
 - Control parameters:
-  - Control method (Hysteresis, PID, Bang-Bang, DDPG, MPC)
+  - Control method (Hysteresis, PID, Bang-Bang, DDPG, MPC, PPO)
   - Method-specific parameters:
     - Hysteresis band width
     - PID gains (P, I, D)
@@ -114,11 +122,11 @@ The simulation includes a parameter adjustment panel allowing you to modify vari
 
 ## Controller Comparison
 
-The new refactored structure makes it easy to run multiple controllers and compare their performance:
+The refactored structure makes it easy to run multiple controllers and compare their performance:
 
 ```bash
 # Run and compare multiple controllers
-python main.py --controllers Hysteresis PID MPC --compare --analyze --log --duration 30.0
+python main.py --controllers Hysteresis PID MPC PPO --compare --analyze --log --duration 30.0
 ```
 
 This will:
@@ -130,7 +138,29 @@ This will:
    - Settling time
    - Steady-state error
 
-## DDPG Reinforcement Learning
+## Reinforcement Learning Controllers
+
+### PPO (Proximal Policy Optimization)
+
+The PPO controller uses the Stable Baselines3 implementation to learn optimal control policies for the hopper:
+
+- **Gymnasium Environment**: Wraps the physics simulation as a standard Gymnasium environment
+- **Observation Space**: [position, velocity, target_height]
+- **Action Space**: Discrete (0 = no thrust, 1 = full thrust)
+- **Reward Function**: Combination of position error, fuel usage penalty, velocity penalty, and goal achievement bonus
+- **Network Architecture**: MLP with two hidden layers (64, 64)
+
+To train and use a PPO controller:
+
+```bash
+# Train a new PPO model with 200 episodes
+python main.py --controllers PPO --ppo-train --ppo-train-episodes 200 --ppo-save models/ppo_hopper.zip
+
+# Load a pre-trained model for evaluation (no training)
+python main.py --controllers PPO --ppo-load models/ppo_hopper.zip --ppo-no-train
+```
+
+### DDPG (Deep Deterministic Policy Gradient)
 
 The DDPG controller implements a state-of-the-art model-free reinforcement learning approach for altitude control:
 
@@ -163,7 +193,7 @@ This will:
    - Overall system performance
    - Kalman filter accuracy
    - Controller performance
-   - DDPG learning curve (when using DDPG)
+   - DDPG/PPO learning curve (when using reinforcement learning controllers)
 
 You can also analyze saved log files separately:
 
@@ -191,6 +221,7 @@ python analysis.py logs/ --compare
   - `pid_controller.py`: PID controller with anti-windup
   - `bang_bang_controller.py`: Bang-Bang controller using maximum principle
   - `ddpg_controller.py`: Deep Deterministic Policy Gradient reinforcement learning controller
+  - `ppo_controller.py`: Proximal Policy Optimization reinforcement learning controller
   - `mpc_controller.py`: Model Predictive Controller with receding horizon
 - `visualization.py`: Pygame-based visualization module
 - `parameters.py`: Parameter adjustment GUI module
@@ -207,12 +238,14 @@ pygame_gui
 matplotlib
 scipy
 torch
+stable-baselines3
+gymnasium
 ```
 
 ## Future Improvements
 
 - Advanced air consumption modeling
 - Variable mass considerations
-- Additional reinforcement learning approaches (PPO, SAC)
+- Additional reinforcement learning approaches (SAC)
 - Extended degrees of freedom (2D or 3D movement)
 - Hardware-in-the-loop testing capability
