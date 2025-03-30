@@ -32,6 +32,7 @@ from analysis import (
 # Import the controller factory function
 from controllers import create_controller
 from controllers.ddpg_controller import DDPGController
+from controllers.ppo_controller import PPOController, train_ppo_model
 
 
 def parse_arguments():
@@ -50,7 +51,7 @@ def parse_arguments():
     parser.add_argument('--target', type=float, default=3.0,
                         help='Initial target height in meters (default: 3.0)')
     parser.add_argument('--controllers', type=str, nargs='+', default=['Hysteresis'],
-                        choices=['Hysteresis', 'PID', 'BangBang', 'DDPG', 'MPC'],
+                        choices=['Hysteresis', 'PID', 'BangBang', 'DDPG', 'MPC', 'PPO'],
                         help='Control methods to simulate (default: Hysteresis)')
     
     # Sensor parameters
@@ -88,6 +89,18 @@ def parse_arguments():
                         help='Save trained DDPG model to file when simulation ends')
     parser.add_argument('--ddpg-no-train', action='store_true',
                         help='Disable DDPG training (evaluation mode only)')
+    
+    # PPO specific parameters
+    parser.add_argument('--ppo-load', type=str, default=None,
+                        help='Load pre-trained PPO model from file')
+    parser.add_argument('--ppo-save', type=str, default=None,
+                        help='Save trained PPO model to file when simulation ends')
+    parser.add_argument('--ppo-no-train', action='store_true',
+                        help='Disable PPO training (evaluation mode only)')
+    parser.add_argument('--ppo-train', action='store_true',
+                        help='Train a PPO model before starting simulation')
+    parser.add_argument('--ppo-train-episodes', type=int, default=100,
+                        help='Number of episodes to train PPO (default: 100)')
     
     return parser.parse_args()
 
@@ -146,9 +159,14 @@ def main():
             'DDPG': {
                 'target_height': args.target,
                 'dt': args.dt,
-                'ddpg_load': args.ddpg_load,
-                'ddpg_save': args.ddpg_save,
+                'model_path': args.ddpg_load,
                 'training_mode': not args.ddpg_no_train
+            },
+            'PPO': {
+                'target_height': args.target,
+                'dt': args.dt,
+                'model_path': args.ppo_load,
+                'training_mode': not args.ppo_no_train
             }
         }
     }
@@ -156,6 +174,24 @@ def main():
     # Create output directory if needed
     if args.log and not os.path.exists(args.log_dir):
         os.makedirs(args.log_dir)
+    
+    # Create models directory if needed
+    if not os.path.exists('models'):
+        os.makedirs('models')
+    
+    # Train PPO model if requested
+    if args.ppo_train and 'PPO' in args.controllers:
+        print("\n--- Training PPO Model ---")
+        ppo_model_path = args.ppo_save if args.ppo_save else 'models/ppo_hopper.zip'
+        trained_controller = train_ppo_model(
+            save_path=ppo_model_path,
+            episodes=args.ppo_train_episodes,
+            render=not args.headless
+        )
+        print(f"PPO model trained and saved to {ppo_model_path}")
+        
+        # Update config to use the trained model
+        config['controllers']['PPO']['model_path'] = ppo_model_path
     
     # Initialize shared components
     physics = PhysicsEngine(**config['physics'])
@@ -207,6 +243,14 @@ def main():
             else:
                 print("DDPG controller is in evaluation mode (no training)")
         
+        # Handle PPO model status
+        if controller_name == 'PPO' and isinstance(controller, PPOController):
+            controller.set_training_mode(not args.ppo_no_train)
+            if not args.ppo_no_train:
+                print("PPO controller is in training mode")
+            else:
+                print("PPO controller is in evaluation mode (no training)")
+        
         # Initialize logger for this controller
         logger = SimulationLogger(log_folder=args.log_dir)
         
@@ -235,11 +279,15 @@ def main():
         
         # Save DDPG model if requested
         if controller_name == 'DDPG' and args.ddpg_save and isinstance(controller, DDPGController):
-            if not os.path.exists('models'):
-                os.makedirs('models')
             save_path = args.ddpg_save
             controller.save_networks(save_path)
             print(f"Saved DDPG model to {save_path}")
+        
+        # Save PPO model if requested
+        if controller_name == 'PPO' and args.ppo_save and isinstance(controller, PPOController):
+            save_path = args.ppo_save
+            controller.save_model(save_path)
+            print(f"Saved PPO model to {save_path}")
         
         # Save data if logging is enabled
         if args.log:
