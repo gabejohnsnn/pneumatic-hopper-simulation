@@ -2,8 +2,8 @@
 """
 Analysis and plotting utilities for the pneumatic hopper simulation.
 
-This script can be imported by main.py to log data during simulation,
-or run standalone to analyze previously saved data.
+This script provides functions for analyzing and visualizing simulation results,
+including comparison plots for different controllers.
 """
 
 import os
@@ -13,157 +13,8 @@ import pickle
 import time
 from datetime import datetime
 
-
-class SimulationLogger:
-    """
-    Logger for recording simulation data for later analysis.
-    """
-    
-    def __init__(self, log_folder='logs'):
-        """
-        Initialize the logger.
-        
-        Args:
-            log_folder (str): Folder to save logs to
-        """
-        self.log_folder = log_folder
-        
-        # Create log folder if it doesn't exist
-        if not os.path.exists(log_folder):
-            os.makedirs(log_folder)
-        
-        # Data storage
-        self.physics_data = {
-            'time': [],
-            'position': [],
-            'velocity': [],
-            'acceleration': [],
-            'thrust': []
-        }
-        
-        self.kalman_data = {
-            'time': [],
-            'position': [],
-            'velocity': [],
-            'acceleration': [],
-            'covariance': []
-        }
-        
-        self.controller_data = {
-            'time': [],
-            'target': [],
-            'error': [],
-            'output': []
-        }
-        
-        self.sensor_data = {
-            'time': [],
-            'lidar_readings': [],
-            'mpu_readings': []
-        }
-    
-    def log_physics(self, time, position, velocity, acceleration, thrust):
-        """Log physics data."""
-        self.physics_data['time'].append(time)
-        self.physics_data['position'].append(position)
-        self.physics_data['velocity'].append(velocity)
-        self.physics_data['acceleration'].append(acceleration)
-        self.physics_data['thrust'].append(thrust)
-
-    def log_additional(self, time, data_dict):
-        """
-        Log additional custom data.
-        
-        Args:
-            time (float): Simulation time
-            data_dict (dict): Dictionary with additional data to log
-        """
-        if not hasattr(self, 'additional_data'):
-            self.additional_data = {
-                'time': [],
-            }
-            # Initialize dict entries for each key in data_dict
-            for key in data_dict:
-                self.additional_data[key] = []
-        
-        # Store time and data
-        self.additional_data['time'].append(time)
-        for key, value in data_dict.items():
-            if key not in self.additional_data:
-                self.additional_data[key] = [None] * (len(self.additional_data['time']) - 1)
-            self.additional_data[key].append(value)
-    
-    def log_kalman(self, time, position, velocity, acceleration, covariance=None):
-        """Log Kalman filter estimates."""
-        self.kalman_data['time'].append(time)
-        self.kalman_data['position'].append(position)
-        self.kalman_data['velocity'].append(velocity)
-        self.kalman_data['acceleration'].append(acceleration)
-        self.kalman_data['covariance'].append(covariance if covariance is not None else [0, 0, 0])
-    
-    def log_controller(self, time, target, error, output):
-        """Log controller data."""
-        self.controller_data['time'].append(time)
-        self.controller_data['target'].append(target)
-        self.controller_data['error'].append(error)
-        self.controller_data['output'].append(output)
-    
-    def log_sensors(self, time, lidar_reading, mpu_reading):
-        """Log sensor readings."""
-        self.sensor_data['time'].append(time)
-        self.sensor_data['lidar_readings'].append(lidar_reading if lidar_reading is not None else np.nan)
-        self.sensor_data['mpu_readings'].append(mpu_reading if mpu_reading is not None else np.nan)
-    
-    def save_data(self, filename=None):
-        """
-        Save all logged data to a file.
-        
-        Args:
-            filename (str, optional): Filename to save to. If None, a timestamped filename is used.
-            
-        Returns:
-            str: Path to the saved file
-        """
-        if filename is None:
-            # Generate timestamped filename
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"simulation_{timestamp}.pkl"
-        
-        # Combine all data
-        data = {
-            'physics': self.physics_data,
-            'kalman': self.kalman_data,
-            'controller': self.controller_data,
-            'sensors': self.sensor_data,
-            'timestamp': time.time()
-        }
-        
-        # Save to file
-        filepath = os.path.join(self.log_folder, filename)
-        with open(filepath, 'wb') as f:
-            pickle.dump(data, f)
-
-        if hasattr(self, 'additional_data'):
-            data['additional'] = self.additional_data
-        
-        print(f"Simulation data saved to {filepath}")
-        return filepath
-    
-    @staticmethod
-    def load_data(filepath):
-        """
-        Load saved simulation data from a file.
-        
-        Args:
-            filepath (str): Path to the data file
-            
-        Returns:
-            dict: Loaded data
-        """
-        with open(filepath, 'rb') as f:
-            data = pickle.load(f)
-        
-        return data
+# Import SimulationLogger for static load_data method
+from core.logger import SimulationLogger
 
 
 def plot_simulation_results(data, title=None, save_path=None):
@@ -250,6 +101,113 @@ def plot_simulation_results(data, title=None, save_path=None):
     if save_path:
         plt.savefig(save_path)
         print(f"Plot saved to {save_path}")
+    
+    # Show plot
+    plt.show()
+
+
+def plot_simulation_results_comparison(results_dict, title=None, save_path=None):
+    """
+    Plot comparison of simulation results from multiple controllers.
+    
+    Args:
+        results_dict (dict): Dictionary where keys are controller names and values are data dictionaries
+        title (str, optional): Plot title
+        save_path (str, optional): Path to save the plot to
+    """
+    if not results_dict:
+        print("No data to plot")
+        return
+    
+    # Create figure
+    fig = plt.figure(figsize=(14, 16))
+    
+    # Set title
+    if title:
+        fig.suptitle(title, fontsize=16)
+    else:
+        fig.suptitle('Controller Performance Comparison', fontsize=16)
+    
+    # Define a color cycle for different controllers
+    colors = ['b', 'r', 'g', 'm', 'c', 'y', 'k']
+    line_styles = ['-', '--', '-.', ':']
+    
+    # Position plot
+    ax1 = plt.subplot(4, 1, 1)
+    ax1.set_title('Position Tracking')
+    
+    # Velocity plot
+    ax2 = plt.subplot(4, 1, 2, sharex=ax1)
+    ax2.set_title('Velocity')
+    
+    # Error plot
+    ax3 = plt.subplot(4, 1, 3, sharex=ax1)
+    ax3.set_title('Position Error')
+    
+    # Control output plot
+    ax4 = plt.subplot(4, 1, 4, sharex=ax1)
+    ax4.set_title('Control Output')
+    
+    # Plot data for each controller
+    for i, (controller_name, data) in enumerate(results_dict.items()):
+        color_idx = i % len(colors)
+        style_idx = (i // len(colors)) % len(line_styles)
+        
+        color = colors[color_idx]
+        style = line_styles[style_idx]
+        
+        # Extract data
+        physics = data['physics']
+        kalman = data['kalman']
+        controller = data['controller']
+        
+        # Position plot
+        ax1.plot(physics['time'], physics['position'], f'{color}{style}', 
+                 label=f'{controller_name} - Actual')
+        ax1.plot(controller['time'], controller['target'], f'{color}:', 
+                 label=f'{controller_name} - Target')
+        
+        # Velocity plot
+        ax2.plot(physics['time'], physics['velocity'], f'{color}{style}', 
+                 label=controller_name)
+        
+        # Calculate position error
+        error = np.array(controller['error'])
+        ax3.plot(controller['time'], error, f'{color}{style}', 
+                 label=controller_name)
+        
+        # Control output
+        ax4.plot(controller['time'], controller['output'], f'{color}{style}', 
+                 label=f'{controller_name} - Command')
+        ax4.plot(physics['time'], physics['thrust'], f'{color}:', 
+                 label=f'{controller_name} - Applied', alpha=0.5)
+    
+    # Add grid and legends
+    ax1.set_ylabel('Position (m)')
+    ax1.grid(True)
+    ax1.legend(loc='best')
+    
+    ax2.set_ylabel('Velocity (m/s)')
+    ax2.grid(True)
+    ax2.legend(loc='best')
+    
+    ax3.set_ylabel('Error (m)')
+    ax3.grid(True)
+    ax3.axhline(y=0, color='k', linestyle='-', alpha=0.3)
+    ax3.legend(loc='best')
+    
+    ax4.set_xlabel('Time (s)')
+    ax4.set_ylabel('Control / Thrust')
+    ax4.grid(True)
+    ax4.legend(loc='best')
+    
+    # Adjust layout
+    plt.tight_layout()
+    
+    # Save if requested
+    if save_path:
+        plt.savefig(save_path)
+        print(f"Comparison plot saved to {save_path}")
     
     # Show plot
     plt.show()
@@ -445,6 +403,144 @@ def plot_controller_performance(data, save_path=None):
     plt.show()
 
 
+def plot_controller_performance_comparison(results_dict, title=None, save_path=None):
+    """
+    Plot comparison of controller performance metrics for multiple controllers.
+    
+    Args:
+        results_dict (dict): Dictionary where keys are controller names and values are data dictionaries
+        title (str, optional): Plot title
+        save_path (str, optional): Path to save the plot to
+    """
+    if not results_dict:
+        print("No data to plot")
+        return
+    
+    # Calculate performance metrics for each controller
+    controller_metrics = {}
+    
+    for controller_name, data in results_dict.items():
+        # Extract data
+        physics = data['physics']
+        controller = data['controller']
+        
+        # Calculate metrics
+        metrics = {}
+        
+        # Calculate RMS tracking error
+        error = np.array(controller['error'])
+        metrics['rms_error'] = np.sqrt(np.mean(error**2))
+        
+        # Calculate control effort (integral of absolute control)
+        control_output = np.array(controller['output'])
+        time = np.array(controller['time'])
+        dt = np.diff(time)
+        metrics['control_effort'] = np.sum(np.abs(control_output[1:]) * dt)
+        
+        # Calculate settling time (time to reach within 5% of target)
+        settling_time = None
+        if len(controller['time']) > 0 and len(controller['error']) > 0:
+            # Get final target
+            final_target = controller['target'][-1]
+            
+            # Calculate 5% threshold
+            threshold = 0.05 * final_target
+            
+            # Find settling time
+            for i in range(len(controller['time'])):
+                if abs(controller['error'][i]) <= threshold:
+                    # Check if it stays within threshold
+                    remain_within = True
+                    for j in range(i, len(controller['error'])):
+                        if abs(controller['error'][j]) > threshold:
+                            remain_within = False
+                            break
+                    
+                    if remain_within:
+                        settling_time = controller['time'][i] - controller['time'][0]
+                        break
+        
+        metrics['settling_time'] = settling_time if settling_time is not None else np.nan
+        
+        # Calculate overshoot
+        max_pos = max(physics['position'])
+        final_target = controller['target'][-1]
+        if max_pos > final_target:
+            metrics['overshoot'] = (max_pos - final_target) / final_target * 100
+        else:
+            metrics['overshoot'] = 0.0
+        
+        # Calculate steady-state error (average of last 10% of data)
+        n = len(controller['error'])
+        if n > 10:
+            metrics['steady_state_error'] = np.mean(np.abs(controller['error'][int(0.9*n):]))
+        else:
+            metrics['steady_state_error'] = np.nan
+        
+        controller_metrics[controller_name] = metrics
+    
+    # Create bar chart comparison
+    fig, axs = plt.subplots(2, 2, figsize=(14, 10))
+    fig.suptitle(title if title else 'Controller Performance Metrics Comparison', fontsize=16)
+    
+    # Get controller names and metrics
+    controllers = list(controller_metrics.keys())
+    colors = plt.cm.tab10(np.linspace(0, 1, len(controllers)))
+    
+    # RMS Error
+    rms_errors = [controller_metrics[c]['rms_error'] for c in controllers]
+    axs[0, 0].bar(controllers, rms_errors, color=colors)
+    axs[0, 0].set_title('RMS Tracking Error')
+    axs[0, 0].set_ylabel('Error (m)')
+    axs[0, 0].grid(axis='y')
+    
+    # Settling Time
+    settling_times = [controller_metrics[c]['settling_time'] for c in controllers]
+    axs[0, 1].bar(controllers, settling_times, color=colors)
+    axs[0, 1].set_title('Settling Time (5%)')
+    axs[0, 1].set_ylabel('Time (s)')
+    axs[0, 1].grid(axis='y')
+    
+    # Overshoot
+    overshoots = [controller_metrics[c]['overshoot'] for c in controllers]
+    axs[1, 0].bar(controllers, overshoots, color=colors)
+    axs[1, 0].set_title('Overshoot')
+    axs[1, 0].set_ylabel('Percentage (%)')
+    axs[1, 0].grid(axis='y')
+    
+    # Control Effort
+    control_efforts = [controller_metrics[c]['control_effort'] for c in controllers]
+    axs[1, 1].bar(controllers, control_efforts, color=colors)
+    axs[1, 1].set_title('Control Effort')
+    axs[1, 1].set_ylabel('Integrated Control Signal')
+    axs[1, 1].grid(axis='y')
+    
+    # Adjust layout
+    plt.tight_layout()
+    
+    # Save if requested
+    if save_path:
+        plt.savefig(save_path)
+        print(f"Controller metrics comparison plot saved to {save_path}")
+    
+    # Show plot
+    plt.show()
+    
+    # Print metrics in a table
+    print("\nController Performance Metrics:")
+    print(f"{'Controller':<15} {'RMS Error':<12} {'Settling Time':<15} {'Overshoot':<12} {'SS Error':<12}")
+    print("-" * 70)
+    
+    for controller in controllers:
+        metrics = controller_metrics[controller]
+        settling_time_str = f"{metrics['settling_time']:.2f}" if not np.isnan(metrics['settling_time']) else "N/A"
+        ss_error_str = f"{metrics['steady_state_error']:.4f}" if not np.isnan(metrics['steady_state_error']) else "N/A"
+        
+        print(f"{controller:<15} {metrics['rms_error']:.4f} m     {settling_time_str:<15} {metrics['overshoot']:.2f} %      {ss_error_str}")
+    
+    return controller_metrics
+
+
 # If run as a standalone script
 if __name__ == "__main__":
     import argparse
@@ -454,34 +550,87 @@ if __name__ == "__main__":
     parser.add_argument('file', help='Simulation data file to analyze')
     parser.add_argument('--output', '-o', help='Output folder for plots')
     parser.add_argument('--no-show', action='store_true', help='Do not display plots')
+    parser.add_argument('--compare', action='store_true', help='Compare multiple controllers (provide directory of log files)')
     args = parser.parse_args()
     
-    # Load data
-    data = SimulationLogger.load_data(args.file)
-    
-    # Create output folder if needed
-    if args.output and not os.path.exists(args.output):
-        os.makedirs(args.output)
-    
-    # Generate plots
-    if args.output:
-        base_name = os.path.splitext(os.path.basename(args.file))[0]
-        save_path = os.path.join(args.output, f"{base_name}_results.png")
-        kalman_path = os.path.join(args.output, f"{base_name}_kalman.png")
-        controller_path = os.path.join(args.output, f"{base_name}_controller.png")
+    if args.compare:
+        # Load all log files in the provided directory
+        if os.path.isdir(args.file):
+            log_files = [f for f in os.listdir(args.file) if f.endswith('.pkl')]
+            if not log_files:
+                print(f"No log files found in {args.file}")
+                exit(1)
+            
+            # Load all data files
+            results_dict = {}
+            for log_file in log_files:
+                file_path = os.path.join(args.file, log_file)
+                try:
+                    # Try to extract controller name from filename
+                    # Expected format: simulation_YYYYMMDD_HHMMSS_CONTROLLERNAME.pkl
+                    parts = log_file.split('_')
+                    if len(parts) >= 4:
+                        controller_name = '_'.join(parts[3:]).replace('.pkl', '')
+                    else:
+                        controller_name = log_file.replace('.pkl', '')
+                    
+                    # Load data and add to results dictionary
+                    data = SimulationLogger.load_data(file_path)
+                    results_dict[controller_name] = data
+                    print(f"Loaded data for controller: {controller_name}")
+                except Exception as e:
+                    print(f"Error loading {log_file}: {e}")
+            
+            if not results_dict:
+                print("No valid data files could be loaded")
+                exit(1)
+            
+            # Create output folder if needed
+            if args.output and not os.path.exists(args.output):
+                os.makedirs(args.output)
+            
+            # Plot comparison results
+            if args.output:
+                save_path = os.path.join(args.output, "controller_comparison.png")
+                metrics_path = os.path.join(args.output, "controller_metrics.png")
+            else:
+                save_path = None
+                metrics_path = None
+            
+            if not args.no_show or save_path:
+                plot_simulation_results_comparison(results_dict, save_path=save_path)
+                plot_controller_performance_comparison(results_dict, save_path=metrics_path)
+        else:
+            print(f"Error: {args.file} is not a directory")
+            exit(1)
     else:
-        save_path = None
-        kalman_path = None
-        controller_path = None
-    
-    # Plot results
-    if not args.no_show or save_path:
-        plot_simulation_results(data, save_path=save_path)
-    
-    # Plot Kalman performance
-    if not args.no_show or kalman_path:
-        plot_kalman_performance(data, save_path=kalman_path)
-    
-    # Plot controller performance
-    if not args.no_show or controller_path:
-        plot_controller_performance(data, save_path=controller_path)
+        # Single file analysis (original behavior)
+        # Load data
+        data = SimulationLogger.load_data(args.file)
+        
+        # Create output folder if needed
+        if args.output and not os.path.exists(args.output):
+            os.makedirs(args.output)
+        
+        # Generate plots
+        if args.output:
+            base_name = os.path.splitext(os.path.basename(args.file))[0]
+            save_path = os.path.join(args.output, f"{base_name}_results.png")
+            kalman_path = os.path.join(args.output, f"{base_name}_kalman.png")
+            controller_path = os.path.join(args.output, f"{base_name}_controller.png")
+        else:
+            save_path = None
+            kalman_path = None
+            controller_path = None
+        
+        # Plot results
+        if not args.no_show or save_path:
+            plot_simulation_results(data, save_path=save_path)
+        
+        # Plot Kalman performance
+        if not args.no_show or kalman_path:
+            plot_kalman_performance(data, save_path=kalman_path)
+        
+        # Plot controller performance
+        if not args.no_show or controller_path:
+            plot_controller_performance(data, save_path=controller_path)
