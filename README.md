@@ -13,9 +13,11 @@ This simulation models a pneumatically actuated test bed for altitude control, s
   - PID control with anti-windup
   - Bang-Bang control based on Pontryagin's maximum principle
   - DDPG reinforcement learning control (model-free learning)
+  - Model Predictive Control (MPC) for advanced prediction-based control
 - Interactive parameter adjustment during simulation
 - Pygame-based visualization of the system dynamics and control methods
 - Comprehensive data logging and analysis tools
+- **NEW**: Controller comparison functionality for quantitative evaluation
 
 ## Physics Model
 
@@ -51,10 +53,10 @@ The simulation offers various command line arguments for customization:
 
 ```
 usage: main.py [-h] [--mass MASS] [--thrust THRUST] [--delay DELAY] [--target TARGET] 
-               [--control {Hysteresis,PID,BangBang,DDPG}] [--lidar-noise LIDAR_NOISE] 
-               [--mpu-noise MPU_NOISE] [--dt DT] [--no-auto] [--no-params] [--log] 
-               [--log-freq LOG_FREQ] [--log-dir LOG_DIR] [--analyze] [--ddpg-load DDPG_LOAD]
-               [--ddpg-save DDPG_SAVE] [--ddpg-no-train]
+               [--controllers {Hysteresis,PID,BangBang,DDPG,MPC} [{Hysteresis,PID,BangBang,DDPG,MPC} ...]]
+               [--lidar-noise LIDAR_NOISE] [--mpu-noise MPU_NOISE] [--dt DT] [--duration DURATION]
+               [--no-auto] [--headless] [--log] [--log-freq LOG_FREQ] [--log-dir LOG_DIR] 
+               [--analyze] [--compare] [--ddpg-load DDPG_LOAD] [--ddpg-save DDPG_SAVE] [--ddpg-no-train]
 
 options:
   -h, --help            show this help message and exit
@@ -62,19 +64,21 @@ options:
   --thrust THRUST       Maximum thrust force in N (default: 20.0)
   --delay DELAY         Pneumatic delay time in seconds (default: 0.2)
   --target TARGET       Initial target height in meters (default: 3.0)
-  --control {Hysteresis,PID,BangBang,DDPG}
-                        Control method (default: Hysteresis)
+  --controllers {Hysteresis,PID,BangBang,DDPG,MPC} [{Hysteresis,PID,BangBang,DDPG,MPC} ...]
+                        Control methods to simulate (default: Hysteresis)
   --lidar-noise LIDAR_NOISE
                         LiDAR measurement noise std deviation (default: 0.05)
   --mpu-noise MPU_NOISE
                         MPU6050 measurement noise std deviation (default: 0.1)
   --dt DT               Simulation time step in seconds (default: 0.01)
+  --duration DURATION   Simulation duration in seconds (default: 20.0)
   --no-auto             Disable automatic control (manual thrust only)
-  --no-params           Hide parameter adjustment panel
+  --headless            Run in headless mode (no visualization)
   --log                 Enable data logging
   --log-freq LOG_FREQ   Logging frequency (1 = every step, 10 = every 10th step)
   --log-dir LOG_DIR     Directory to store log files
   --analyze             Analyze and plot results after simulation ends
+  --compare             Compare multiple controllers (requires --controllers with multiple values)
   --ddpg-load DDPG_LOAD Load pre-trained DDPG model from file
   --ddpg-save DDPG_SAVE Save trained DDPG model to file when simulation ends
   --ddpg-no-train       Disable DDPG training (evaluation mode only)
@@ -100,12 +104,31 @@ The simulation includes a parameter adjustment panel allowing you to modify vari
   - Air resistance
 
 - Control parameters:
-  - Control method (Hysteresis, PID, Bang-Bang, DDPG)
+  - Control method (Hysteresis, PID, Bang-Bang, DDPG, MPC)
   - Method-specific parameters:
     - Hysteresis band width
     - PID gains (P, I, D)
     - Bang-Bang threshold
     - DDPG learning rate and exploration noise
+    - MPC prediction horizon
+
+## Controller Comparison
+
+The new refactored structure makes it easy to run multiple controllers and compare their performance:
+
+```bash
+# Run and compare multiple controllers
+python main.py --controllers Hysteresis PID MPC --compare --analyze --log --duration 30.0
+```
+
+This will:
+1. Run simulations for each specified controller
+2. Log the results for each controller
+3. Generate comparison plots showing:
+   - Position tracking performance
+   - Control effort
+   - Settling time
+   - Steady-state error
 
 ## DDPG Reinforcement Learning
 
@@ -120,13 +143,11 @@ To use the DDPG controller:
 
 ```bash
 # Run with DDPG controller and save the trained model
-python main.py --control DDPG --log --analyze --ddpg-save models/trained_ddpg.pth
+python main.py --controllers DDPG --log --analyze --ddpg-save models/trained_ddpg.pth
 
 # Load a previously trained model for evaluation (no training)
-python main.py --control DDPG --ddpg-load models/trained_ddpg.pth --ddpg-no-train
+python main.py --controllers DDPG --ddpg-load models/trained_ddpg.pth --ddpg-no-train
 ```
-
-During simulation, you can toggle DDPG training on/off using the parameter panel.
 
 ## Data Analysis
 
@@ -150,30 +171,41 @@ You can also analyze saved log files separately:
 python analysis.py logs/simulation_YYYYMMDD_HHMMSS.pkl
 ```
 
+To compare multiple saved log files:
+
+```bash
+python analysis.py logs/ --compare
+```
+
 ## Project Structure
 
 - `main.py`: Entry point for the simulation
 - `physics.py`: Physical model of the hopper system with pneumatic delay
 - `sensor.py`: Simulated sensor data from LiDAR and MPU6050
 - `kalman_filter.py`: Implementation of Kalman filter for state estimation
+- `core/`: Core simulation components
+  - `simulation_runner.py`: Central simulation loop and controller management
+  - `logger.py`: Logging and data management
 - `controllers/`: Control methods package
   - `hysteresis_controller.py`: Hysteresis controller with built-in delay
   - `pid_controller.py`: PID controller with anti-windup
   - `bang_bang_controller.py`: Bang-Bang controller using maximum principle
   - `ddpg_controller.py`: Deep Deterministic Policy Gradient reinforcement learning controller
+  - `mpc_controller.py`: Model Predictive Controller with receding horizon
 - `visualization.py`: Pygame-based visualization module
 - `parameters.py`: Parameter adjustment GUI module
-- `analysis.py`: Data logging and analysis tools
+- `analysis.py`: Analysis and plotting tools (single and comparison)
 
 ## Requirements
 
-The DDPG controller requires PyTorch in addition to the other dependencies:
+The simulation requires the following dependencies:
 
 ```
 numpy
 pygame
 pygame_gui
 matplotlib
+scipy
 torch
 ```
 
@@ -181,7 +213,6 @@ torch
 
 - Advanced air consumption modeling
 - Variable mass considerations
-- Model predictive control (MPC) implementation
 - Additional reinforcement learning approaches (PPO, SAC)
 - Extended degrees of freedom (2D or 3D movement)
 - Hardware-in-the-loop testing capability
