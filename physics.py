@@ -169,7 +169,7 @@ class PhysicsEngine:
     
     def get_history(self):
         """Return the history of position, velocity, thrust, and time."""
-        history = {
+        history_dict = {
             'position': self.position_history,
             'velocity': self.velocity_history,
             'thrust': self.thrust_history,
@@ -178,44 +178,61 @@ class PhysicsEngine:
         
         # Add air consumption data if available
         if self.enable_air_consumption:
-            history['air_flow_rate'] = self.air_flow_history
-            history['air_remaining'] = self.air_remaining_history
-            
-            # Add summary statistics if model exists
-            if self.air_model:
-                history['air_consumption_stats'] = self.air_model.get_summary_statistics()
+            history_dict.update({
+                'air_flow_rate': self.air_flow_history,
+                'air_remaining': self.air_remaining_history
+            })
         
-        return history
+        return history_dict
     
-    def get_air_stats(self):
-        """Get current air consumption statistics."""
+    def get_air_consumption_status(self):
+        """
+        Get the current status of air consumption.
+        
+        Returns:
+            dict: A dictionary containing current air consumption metrics
+        """
         if not self.enable_air_consumption or not self.air_model:
-            return None
-            
-        return {
-            'flow_rate': self.air_flow_rate,
-            'efficiency': self.air_efficiency,
-            'remaining': self.air_remaining,
-            'tank_empty': self.tank_empty,
-            'estimated_time_left': self.air_model.get_remaining_operation_time()
+            return {
+                'enabled': False
+            }
+        
+        # Get detailed stats from air model
+        stats = self.air_model.get_summary_statistics()
+        
+        # Add current state info
+        status = {
+            'enabled': True,
+            'current_flow_rate': self.air_flow_rate,
+            'current_efficiency': self.air_efficiency,
+            'remaining_percentage': self.air_remaining,
+            'is_tank_empty': self.tank_empty,
+            'stats': stats
         }
+        
+        return status
     
     def plot_air_consumption(self):
-        """Plot air consumption metrics."""
+        """
+        Generate plots of air consumption metrics.
+        
+        Returns:
+            matplotlib.figure.Figure or None: Figure with plots if air consumption is enabled
+        """
         if not self.enable_air_consumption or not self.air_model:
             print("Air consumption modeling is not enabled.")
             return None
-            
+        
         return self.air_model.plot_consumption_metrics()
     
-    def reset(self, position=2.0):
+    def reset(self, initial_position=2.0):
         """
         Reset the simulation to initial conditions.
         
         Args:
-            position (float, optional): Initial position to reset to. Defaults to 2.0.
+            initial_position (float): Initial height above ground in meters
         """
-        self.position = position
+        self.position = initial_position
         self.velocity = 0.0
         self.acceleration = -self.gravity
         self.thrust = 0.0
@@ -228,7 +245,7 @@ class PhysicsEngine:
             self.air_efficiency = 1.0
             self.air_remaining = 100.0
             self.tank_empty = False
-        
+            
         # Reset history tracking
         self.position_history = []
         self.velocity_history = []
@@ -244,8 +261,8 @@ if __name__ == "__main__":
     # Simple test to verify the physics engine with air consumption
     engine = PhysicsEngine(enable_air_consumption=True)
     
-    # Run for 5 seconds
-    total_steps = int(5.0 / engine.dt)
+    # Run for 10 seconds
+    total_steps = int(10.0 / engine.dt)
     
     for i in range(total_steps):
         # Apply a simple control strategy for testing
@@ -256,12 +273,23 @@ if __name__ == "__main__":
         
         pos, vel, acc = engine.step()
         
-        if i % 20 == 0:  # Print every 20 steps
-            air_stats = engine.get_air_stats()
-            if air_stats:
-                print(f"Time: {i*engine.dt:.2f}s, Position: {pos:.2f}m, Velocity: {vel:.2f}m/s, " +
-                      f"Air Remaining: {air_stats['remaining']:.1f}%, Flow Rate: {air_stats['flow_rate']*1000:.1f} g/s")
+        if i % 100 == 0:  # Print every 100 steps (every second with dt=0.01)
+            print(f"Time: {i*engine.dt:.2f}s, Position: {pos:.2f}m, Velocity: {vel:.2f}m/s, Thrust: {engine.thrust:.2f}N")
+            
+            if engine.enable_air_consumption:
+                print(f"  Air Flow: {engine.air_flow_rate*1000:.2f} g/s, Efficiency: {engine.air_efficiency:.2f}, Remaining: {engine.air_remaining:.1f}%")
+    
+    # Print air consumption summary
+    if engine.enable_air_consumption:
+        print("\nAir Consumption Summary:")
+        status = engine.get_air_consumption_status()
+        for key, value in status['stats'].items():
+            if isinstance(value, float):
+                print(f"{key}: {value:.3f}")
             else:
-                print(f"Time: {i*engine.dt:.2f}s, Position: {pos:.2f}m, Velocity: {vel:.2f}m/s")
+                print(f"{key}: {value}")
+        
+        # Plot consumption metrics
+        engine.plot_air_consumption()
     
     print("Test complete.")
